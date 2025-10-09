@@ -1,0 +1,304 @@
+# ========================================
+# VERL图像编辑训练配置文件 - 6维度混合奖励版本
+# 使用5个GPT一致性评估维度 + 1个规则格式维度
+# ========================================
+
+data:
+  # ========== 数据集路径配置 ==========
+  train_files: /data2/yixuan/omniedit_qwen_edit_sft/cvpr_sft_dataset_omniedit_6000  # 训练数据集路径
+  val_files: /data2/yixuan/omniedit_qwen_edit_sft/cvpr_sft_dataset_omniedit_6000    # 验证数据集路径（可与训练集相同）
+  
+  # ========== 数据格式配置 ==========
+  data_format: parquet  # 数据格式：parquet（高效）或jsonl（兼容性好）
+  parquet_pattern: "omniedit_qwen_edit_batch_*.parquet"  # parquet文件匹配模式，支持通配符
+  
+  # ========== 分块加载优化配置 ==========
+  cache_size: 2                      # 内存中缓存的parquet文件数量（推荐3-5）
+  prefetch_size: 2                   # 后台预取的文件数量（推荐2-3）
+  enable_prefetch: true              # 启用后台预取（推荐true）
+  
+  # ========== vLLM Token配置 ==========
+  max_num_batched_tokens: 32768      # 批处理最大token数（必须 > max_prompt_length + max_response_length）
+  
+  # ========== 数据字段映射 ==========
+  prompt_key: original_description      # 输入提示字段名（原始图像描述）
+  answer_key: edit_instruction          # 目标回答字段名（编辑指令）
+  image_key: images                     # 图像数据字段名
+  video_key: videos                     # 视频数据字段名（如果有）
+  image_dir: null                       # 图像文件目录（parquet格式不需要）
+  video_fps: 2.0                        # 视频帧率（处理视频时使用）
+  
+  # ========== 序列长度配置 ==========
+  max_prompt_length: 30000               # 最大输入提示长度（token数）- 图像编辑需要较长context
+  max_response_length: 1024             # 最大响应长度（token数）- 包含CoT推理和编辑指令
+  
+  # ========== 批处理配置 ==========
+  rollout_batch_size: 16                # rollout阶段批量大小（影响内存使用和训练效率）
+  mini_rollout_batch_size: 8            # 小批量大小（用于内存不足时分割处理）
+  val_batch_size: 8                     # 验证批量大小（通常小于训练批量）
+  
+  # ========== 提示格式配置 ==========
+  format_prompt: null                   # 提示格式化模板文件路径（null=使用数据集内置格式）
+  override_chat_template: null          # 覆盖聊天模板（null=使用模型默认模板）
+  
+  # ========== 数据处理配置 ==========
+  shuffle: true                         # 是否打乱数据顺序（训练时建议开启）
+  seed: 42                              # 随机种子（保证实验可重复性）
+  min_pixels: 262144                    # 最小图像像素数（512x512）- 过滤低分辨率图像
+  max_pixels: 4194304                   # 最大图像像素数（2048x2048）- 控制内存使用
+  filter_overlong_prompts: true         # 是否过滤过长提示（避免OOM）
+  
+  # ========== 图像编辑数据集专用字段（向后兼容JSONL格式）==========
+  original_image_dir: null              # 原始图像目录（parquet格式不需要）
+  edited_image_dir: null                # 编辑后图像目录（parquet格式不需要）
+  original_image_key: "original_images" # 原始图像字段名
+  preliminary_edited_image_key: "preliminary_edited_images"  # 初步编辑图像字段名
+  edit_instruction_key: "edit_instruction"     # 编辑指令字段名
+  expected_reasoning_key: "reasoning"          # 期望推理字段名（CoT）
+  original_description_key: "original_description"  # 原始描述字段名
+
+# ========================================
+# PPO算法配置 - 强化学习核心参数
+# ========================================
+algorithm:
+  # ========== 优势估计器配置 ==========
+  adv_estimator: grpo                   # 优势估计方法：gae（标准GAE）/grpo（Group Relative）/reinforce_plus_plus/remax/rloo
+  
+  # ========== KL散度控制 ==========
+  disable_kl: false                     # 是否禁用KL散度约束（false=启用参考模型约束）
+  use_kl_loss: true                     # 是否使用KL损失而非奖励中的KL项（true=更稳定训练）
+  kl_penalty: low_var_kl                # KL惩罚类型：kl（标准）/abs（绝对值）/mse（均方误差）/low_var_kl（低方差）
+  kl_coef: 1.0e-2                       # KL系数（控制与参考模型偏离程度，越大越保守）
+  
+  # ========== 在线样本过滤 ==========
+  online_filtering: false               # 是否启用在线过滤（根据奖励分数过滤样本）
+  filter_key: overall                   # 过滤依据的奖励键名
+  filter_low: 0.01                      # 过滤低奖励样本阈值（百分位）
+  filter_high: 0.99                     # 过滤高奖励样本阈值（百分位）
+
+# ========================================
+# Worker配置 - 分布式训练组件设置
+# ========================================
+worker:
+  # ========== Actor模型配置（策略网络）==========
+  actor:
+    # --- 批处理配置 ---
+    global_batch_size: 16               # 全局批量大小（所有设备总和，影响梯度更新频率）
+    micro_batch_size_per_device_for_update: 1      # 每设备更新时的微批量（影响内存使用）
+    micro_batch_size_per_device_for_experience: 4  # 每设备经验收集时的微批量（影响rollout效率）
+    
+    # --- 训练稳定性配置 ---
+    max_grad_norm: 1.0                  # 梯度裁剪阈值（防止梯度爆炸）
+    padding_free: true                  # 无填充训练（提高效率，适合变长序列）
+    dynamic_batching: true              # 动态批处理（根据序列长度自动调整）
+    ulysses_size: 1                     # Ulysses序列并行大小（1=不使用序列并行）
+    
+    # --- 模型配置 ---
+    model:
+      model_path: Qwen/Qwen2.5-VL-7B-Instruct     # 预训练模型路径（支持HuggingFace格式）
+      enable_gradient_checkpointing: true          # 梯度检查点（节省显存，略增计算时间）
+      trust_remote_code: false                     # 是否信任远程代码（安全考虑）
+      freeze_vision_tower: false                   # 是否冻结视觉编码器（false=微调视觉部分）
+    
+    # --- 优化器配置 ---
+    optim:
+      lr: 5.0e-7                        # 学习率（图像编辑任务建议较低，避免过拟合）
+      weight_decay: 1.0e-2              # 权重衰减（L2正则化强度）
+      strategy: adamw                   # 优化器类型：adamw（推荐）/adam/sgd
+      lr_warmup_ratio: 0.1              # 学习率预热比例（前10%步数线性增加学习率）
+    
+    # --- FSDP分布式配置 ---
+    fsdp:
+      enable_full_shard: true           # 完全分片（最大化内存节省）
+      enable_cpu_offload: false         # CPU卸载（false=全GPU训练，更快但占用更多显存）
+      enable_rank0_init: true           # rank0初始化（减少初始化时间）
+    
+    # --- 内存优化配置 ---
+    offload:
+      offload_params: true              # 参数卸载（节省显存）
+      offload_optimizer: true           # 优化器状态卸载（节省显存）
+
+  # ========== Rollout配置（策略推理阶段）==========
+  rollout:
+    # --- 生成参数 ---
+    n: 2                                # 每个提示生成的候选数（多候选提高质量）
+    temperature: 0.8                    # 生成温度（0.8=适度随机性，平衡创造性和一致性）
+    top_p: 0.9                         # 核采样阈值（0.9=保留90%概率质量的token）
+    limit_images: 0                     # 限制图像数量（0=无限制）
+    
+    # --- vLLM推理引擎配置 ---
+    gpu_memory_utilization: 0.4         # GPU内存利用率（0.4=40%，为其他组件预留空间）
+    enforce_eager: false                # 强制eager模式（false=使用CUDA图优化）
+    enable_chunked_prefill: false       # 分块预填充（处理长序列时启用）
+    tensor_parallel_size: 2             # 张量并行大小（2=使用2个GPU进行模型并行）
+    max_model_len: 30000                 # 最大模型序列长度（匹配数据配置）
+    prompt_length: 30000                # 提示长度（与max_prompt_length一致）
+    response_length: 1024               # 响应长度（与max_response_length一致）
+    max_num_batched_tokens: 32768       # 批处理最大token数（必须 > prompt_length + response_length）
+    disable_tqdm: false                 # 是否禁用进度条（false=显示推理进度）
+    
+    # --- 验证时覆盖配置 ---
+    val_override_config:
+      temperature: 0.6                  # 验证时使用较低温度（更确定性的输出）
+      top_p: 0.95                       # 验证时使用更严格的采样
+      n: 1                              # 验证时只生成1个候选（节省时间）
+
+  # ========== 参考模型配置（Reference Policy）==========
+  ref:
+    # --- FSDP配置（参考模型通常需要更激进的内存优化）---
+    fsdp:
+      enable_full_shard: true           # 完全分片（参考模型只推理，可以更激进）
+      enable_cpu_offload: true          # CPU卸载（参考模型使用频率低，可以卸载节省显存）
+      enable_rank0_init: true           # rank0初始化
+    
+    # --- 内存优化配置 ---
+    offload:
+      offload_params: true              # 参数卸载（参考模型优先卸载）
+
+  # ========== 6维度奖励系统配置（核心评估机制）==========
+  reward:
+    # --- 奖励类型配置 ---
+    reward_type: combined               # 奖励类型：gpt41（纯GPT）/rule_based_format（纯规则）/combined（6维度混合）
+    reward_function: null               # 自定义奖励函数（null=使用内置函数）
+    num_cpus: 0                        # CPU资源分配（0=不分配，避免CUDA初始化冲突）
+    
+    # ========== GPT-4o API配置（内容质量评估）==========
+    use_gpt41_api: true                 # 是否使用GPT-4o API（需要网络和API key）
+    gpt41_api_key: null                 # API密钥（null=从OPENAI_API_KEY环境变量读取）
+    gpt41_api_base: "https://api.openai.com/v1"  # API基础URL
+    gpt41_model: "gpt-4o"               # 使用的GPT模型（gpt-4o=最新多模态模型）
+    gpt41_max_tokens: 100               # 最大生成token数（评估任务不需要太多）
+    gpt41_temperature: 0.3              # 生成温度（0.0=确定性评估）
+    gpt41_max_retries: 5                # 最大重试次数（网络问题时）
+    gpt41_retry_delay: 10.0              # 重试延迟（秒）
+    gpt41_request_timeout: 30.0         # 请求超时（秒）
+    
+    # ========== 规则格式奖励配置（格式合规性评估）==========
+    rule_re_edit_max_length_ideal: 50      # 理想Re_edit长度（无惩罚，鼓励简洁）
+    rule_re_edit_max_length_acceptable: 100  # 可接受长度（轻微惩罚）
+    rule_re_edit_max_length_tolerable: 150   # 可容忍长度（中等惩罚）
+    
+    # ========== 6维度混合奖励策略配置 ==========
+    # --- 5个GPT一致性评估维度权重（每个维度0-10分）---
+    combined_gpt_physical_geometric_weight: 0.15     # 物理几何一致性维度
+    combined_gpt_environment_context_weight: 0.15   # 环境上下文一致性维度
+    combined_gpt_cultural_social_weight: 0.15       # 文化社会规范对齐维度
+    combined_gpt_logical_causal_weight: 0.15        # 逻辑因果一致性维度
+    combined_gpt_target_attribution_weight: 0.15    # 目标归因推理一致性维度
+    
+    # --- 格式奖励维度权重（0-5分，自动缩放到0-10分）---
+    combined_rule_format_weight: 0.25               # 格式规范性维度
+    
+    # --- 组合策略配置 ---
+    combined_strategy: "weighted_sum"               # 组合策略：weighted_sum（6维度加权和）/gated（门控）/multiplicative（乘性）
+    combined_rule_gate_threshold: 2.5               # 门控阈值（仅gated策略使用，格式分数低于此值时忽略GPT分数）
+
+  # ========== 图像编辑Worker配置（独立GPU资源池）==========
+  image_edit:
+    # --- 模型配置 ---
+    model_path: "Qwen/Qwen-Image-Edit"  # 图像编辑模型路径（可设置为本地路径）
+    trust_remote_code: true             # 信任远程代码（Qwen模型需要）
+    torch_dtype: "bfloat16"             # 数据类型（bfloat16=节省显存，保持精度）
+    
+    # --- 资源配置（由Ray资源池自动管理）---
+    num_cpus: 1                         # CPU核心数（图像编辑不需要太多CPU）
+    num_gpus: 4                         # GPU数量（3个GPU并行处理，GPU 3-5）
+    
+    # --- 文本生成参数 ---
+    max_new_tokens: 512                 # 最大生成token数（编辑指令通常较短）
+    temperature: 0.7                    # 生成温度（0.7=适度创造性）
+    top_p: 0.9                         # 核采样阈值
+    do_sample: true                     # 启用采样（增加输出多样性）
+    
+    # --- Diffusers扩散模型参数 ---
+    true_cfg_scale: 4.0                 # True CFG引导强度（控制生成质量vs多样性）
+    negative_prompt: ""                 # 负向提示（空=不使用负向引导）
+    num_inference_steps: 50             # 扩散步数（50=平衡质量和速度，测试时可减少到5-20）
+    guidance_scale: 7.5                 # 引导比例（7.5=标准设置）
+    
+    # --- 分布式配置（简化版本）---
+    enable_fsdp: false                  # 禁用FSDP（图像编辑模型相对较小，简化实现）
+    fsdp_sharding_strategy: "FULL_SHARD"  # FSDP分片策略（未启用时忽略）
+    fsdp_cpu_offload: false             # FSDP CPU卸载（未启用时忽略）
+    fsdp_sync_module_states: false      # FSDP状态同步（未启用时忽略）
+    
+    # --- 批处理配置 ---
+    batch_size: 4                       # 批量大小（4个GPU并行处理，提高效率）
+    max_batch_size: 8                   # 最大批量大小（4个GPU时的上限，充分利用资源）
+    
+    # --- 内存优化配置 ---
+    enable_cpu_offload: false           # CPU卸载（独占GPU资源，无需卸载）
+    enable_gradient_checkpointing: false # 梯度检查点（推理阶段不需要）
+    image_size: 1024                    # 处理图像尺寸（1024x1024）
+
+# ========================================
+# 训练器配置 - 训练流程控制
+# ========================================
+trainer:
+  # ========== 训练周期配置 ==========
+  total_epochs: 5                     # 总训练轮数（测试用较小值，生产环境建议10-20）
+  max_steps: null                     # 最大训练步数（null=以epochs为准，设置数值则以步数为准）
+  
+  # ========== 实验管理配置 ==========
+  project_name: easy_r1_combined      # 项目名称（用于日志和检查点组织）
+  experiment_name: qwen2_5_vl_7b_image_edit_combined_test  # 实验名称（具体实验标识）
+  logger: ["console", "wandb"]        # 日志记录器：console（控制台）/wandb（权重和偏置）/mlflow/tensorboard
+  
+  # ========== 分布式配置 ==========
+  nnodes: 1                          # 节点数量（单机训练=1）
+  n_gpus_per_node: 6                 # 每节点GPU数（6个GPU：0,1用于训练，2-5用于图像编辑）
+  
+  # ========== 训练控制配置 ==========
+  max_try_make_batch: 10             # 最大批次生成尝试次数（在线过滤时的重试限制）
+  
+  # ========== 验证配置 ==========
+  val_freq: -1                       # 验证频率（-1=禁用验证，>0=每N个epoch验证一次）
+  val_before_train: false            # 训练前是否验证（false=直接开始训练）
+  val_only: false                    # 仅验证模式（false=正常训练+验证）
+  val_generations_to_log: 2          # 记录的验证生成样本数
+  train_generations_to_log: 5        # 训练样本记录数量（每步记录5个样本到wandb）
+  
+  # ========== 模型保存配置 ==========
+  save_freq: 2                       # 保存频率（每2个epoch保存一次）
+  save_limit: 2                      # 保存限制（最多保留2个检查点）
+  save_model_only: false             # 仅保存模型（false=保存完整训练状态）
+  save_checkpoint_path: null         # 检查点保存路径（null=自动生成路径）
+  load_checkpoint_path: null         # 加载检查点路径（null=从头开始训练）
+  find_last_checkpoint: true         # 自动寻找最新检查点（true=断点续训）
+  
+  # ========== 图像编辑专用设置 ==========
+  enable_image_editing: true         # 启用图像编辑功能（核心开关）
+  image_edit_validation_freq: 2      # 图像编辑验证频率（每2个epoch验证编辑效果）
+  save_edited_images: true           # 保存编辑后的图像（用于可视化分析）
+  max_validation_images: 5           # 最大验证图像数（控制验证时间和存储）
+
+# ========================================
+# 6维度奖励系统说明
+# ========================================
+# 本配置使用6维度混合奖励评估系统：
+#
+# 【5个GPT一致性评估维度】（每个维度独立调用GPT API，0-10分）：
+# 1. Physical & Geometric Consistency (物理几何一致性)
+#    - 物理定律遵循、几何关系正确性、空间透视一致性
+# 2. Environment & Context Consistency (环境上下文一致性)  
+#    - 环境背景一致性、上下文关联性、场景合理性
+# 3. Cultural & Social Norm Alignment (文化社会规范对齐)
+#    - 文化适宜性、社会规范符合度、价值观对齐
+# 4. Logical & Causal Consistency (逻辑因果一致性)
+#    - 逻辑关系正确性、因果链合理性、推理一致性
+# 5. Target Attribution & Referential Reasoning (目标归因推理一致性)
+#    - 目标对象识别准确性、指代推理正确性、归因一致性
+#
+# 【1个格式规范维度】（规则评估，0-5分自动缩放到0-10分）：
+# 6. Format Consistency (格式一致性)
+#    - 输出格式规范性、标签正确性、结构完整性
+#
+# 【权重配置建议】：
+# - 各GPT维度权重可根据任务特点调整
+# - 格式权重建议保持0.2-0.3之间，确保基本格式合规
+# - 所有权重之和会自动归一化为1.0
+#
+# 【成本考虑】：
+# - 每个样本需要调用5次GPT API（每个一致性维度1次）
+# - 总API调用次数 = 样本数 × 5
+# - 建议在测试阶段使用较小的batch_size
