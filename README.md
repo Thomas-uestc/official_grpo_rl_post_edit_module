@@ -21,7 +21,7 @@
 ### 1. 克隆仓库
 ```bash
 git clone https://github.com/Thomas-uestc/official_grpo_rl_post_edit_module.git
-cd EasyR1_upload
+cd official_grpo_rl_post_edit_module
 ```
 
 ### 2. 创建Conda环境
