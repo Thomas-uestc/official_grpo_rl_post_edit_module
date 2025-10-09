@@ -1,10 +1,8 @@
-# EasyR1: Vision-Enhanced Reinforcement Learning for Image Editing
+# CoT for Image-Edit
 
 基于VERL框架的图像编辑强化学习训练系统，使用GRPO算法和6维度混合奖励机制，专门针对多模态图像编辑任务进行优化。
 
 ## 🚀 项目概述
-
-EasyR1是一个高效的图像编辑强化学习训练框架，具有以下核心特性：
 
 - **多模态强化学习**: 基于Qwen2.5-VL-7B和Qwen-Image-Edit的端到端训练
 - **6维度奖励系统**: 结合GPT-4o内容评估和规则格式检查的混合奖励机制
