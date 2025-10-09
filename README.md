@@ -23,7 +23,7 @@ EasyR1是一个高效的图像编辑强化学习训练框架，具有以下核�
 
 ### 1. 克隆仓库
 ```bash
-git clone <repository-url>
+git clone https://github.com/Thomas-uestc/official_grpo_rl_post_edit_module.git
 cd EasyR1_upload
 ```
 
