@@ -518,6 +518,8 @@ class RayPPOTrainer:
             
             # 准备样本数据 (excluding input content)
             samples = []
+            images = []  # 新增：收集图像数据
+            
             for idx in selected_indices:
                 # 解码response（只解码有效部分）
                 response_ids = responses[idx]
@@ -540,15 +542,141 @@ class RayPPOTrainer:
                 # 使用空字符串作为input占位符，因为WandbGenerationLogger会忽略input
                 sample = ("", response_text, re_edit_instruction, 0.0)
                 samples.append(sample)
+                
+                # 提取图像数据
+                image_dict = self._extract_images_for_sample(batch, idx, step)
+                images.append(image_dict)
             
             # 记录到wandb - 标记为训练日志
-            self.logger.log_generation(samples, step, context="train")
-            print(f"[TRAINER] Step {step}: Successfully logged {len(samples)} training samples to wandb")
+            self.logger.log_generation(samples, step, context="train", images=images)
+            print(f"[TRAINER] Step {step}: Successfully logged {len(samples)} training samples and {len(images)} image sets to wandb")
             
         except Exception as e:
             print(f"[TRAINER] Step {step}: Error logging training samples: {e}")
             import traceback
             print(f"[TRAINER] Traceback: {traceback.format_exc()}")
+
+    def _extract_images_for_sample(self, batch: DataProto, sample_idx: int, step: int) -> dict:
+        """Extract image data for a specific sample"""
+        image_dict = {
+            "original_image": None,
+            "preliminary_edited_image": None,
+            "final_edited_image": None
+        }
+        
+        try:
+            # 提取原始图像
+            if "original_images" in batch.non_tensor_batch:
+                original_images = batch.non_tensor_batch["original_images"]
+                if sample_idx < len(original_images):
+                    image_dict["original_image"] = self._ensure_pil_image(original_images[sample_idx])
+            
+            # 提取初步编辑图像
+            if "preliminary_edited_images" in batch.non_tensor_batch:
+                preliminary_images = batch.non_tensor_batch["preliminary_edited_images"]
+                if sample_idx < len(preliminary_images):
+                    image_dict["preliminary_edited_image"] = self._ensure_pil_image(preliminary_images[sample_idx])
+            
+            # 提取最终编辑图像
+            if "final_edited_images" in batch.non_tensor_batch:
+                final_images = batch.non_tensor_batch["final_edited_images"]
+                if sample_idx < len(final_images):
+                    image_dict["final_edited_image"] = self._ensure_pil_image(final_images[sample_idx])
+            
+            # 调试信息
+            if sample_idx < 3:  # 只记录前3个样本的调试信息
+                print(f"[TRAINER] Step {step}: Sample {sample_idx+1} image extraction:")
+                for img_type, img_data in image_dict.items():
+                    if img_data is not None:
+                        print(f"  {img_type}: {type(img_data)} - {str(img_data)[:50]}...")
+                    else:
+                        print(f"  {img_type}: None")
+                        
+        except Exception as e:
+            print(f"[TRAINER] Step {step}: Error extracting images for sample {sample_idx}: {e}")
+        
+        return image_dict
+
+    def _ensure_pil_image(self, image_data):
+        """Convert various image data types to PIL Image"""
+        try:
+            from PIL import Image
+            import numpy as np
+            import base64
+            import io
+            
+            if image_data is None:
+                return None
+            
+            # Handle PIL Image
+            if isinstance(image_data, Image.Image):
+                return image_data
+            
+            # Handle numpy array
+            if isinstance(image_data, np.ndarray):
+                if image_data.dtype != np.uint8:
+                    # 检查数据范围并适当缩放
+                    if image_data.max() <= 1.0:
+                        # 0-1范围的浮点数
+                        image_data = (image_data * 255).astype(np.uint8)
+                    else:
+                        # 其他范围的数据，直接转换为uint8（会自动截断）
+                        image_data = np.clip(image_data, 0, 255).astype(np.uint8)
+                return Image.fromarray(image_data)
+            
+            # Handle list (assumed to be RGB values)
+            if isinstance(image_data, list):
+                if len(image_data) > 0 and isinstance(image_data[0], list):
+                    # 2D list
+                    np_array = np.array(image_data)
+                    if np_array.dtype != np.uint8:
+                        # 检查数据范围并适当缩放
+                        if np_array.max() <= 1.0:
+                            # 0-1范围的浮点数
+                            np_array = (np_array * 255).astype(np.uint8)
+                        else:
+                            # 其他范围的数据，直接转换为uint8（会自动截断）
+                            np_array = np.clip(np_array, 0, 255).astype(np.uint8)
+                    return Image.fromarray(np_array)
+                else:
+                    # 1D list, try to reshape
+                    np_array = np.array(image_data)
+                    if np_array.dtype != np.uint8:
+                        # 检查数据范围并适当缩放
+                        if np_array.max() <= 1.0:
+                            # 0-1范围的浮点数
+                            np_array = (np_array * 255).astype(np.uint8)
+                        else:
+                            # 其他范围的数据，直接转换为uint8（会自动截断）
+                            np_array = np.clip(np_array, 0, 255).astype(np.uint8)
+                    # Try to reshape to square image
+                    size = int(np.sqrt(len(np_array)))
+                    if size * size == len(np_array):
+                        return Image.fromarray(np_array.reshape(size, size))
+                    else:
+                        return Image.fromarray(np_array)
+            
+            # Handle base64 string
+            if isinstance(image_data, str):
+                try:
+                    # Remove data URL prefix if present
+                    if ',' in image_data:
+                        image_data = image_data.split(',')[1]
+                    image_bytes = base64.b64decode(image_data)
+                    return Image.open(io.BytesIO(image_bytes))
+                except Exception:
+                    pass
+            
+            # Handle bytes
+            if isinstance(image_data, bytes):
+                return Image.open(io.BytesIO(image_data))
+            
+            print(f"[TRAINER] Unsupported image data type: {type(image_data)}")
+            return None
+            
+        except Exception as e:
+            print(f"[TRAINER] Error converting image data: {e}")
+            return None
 
     def _validate(self) -> dict[str, Any]:
         reward_tensor_lst = []

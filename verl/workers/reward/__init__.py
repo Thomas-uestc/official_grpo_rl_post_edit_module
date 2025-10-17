@@ -16,7 +16,7 @@ from .config import RewardConfig
 from .function import BatchFunctionRewardManager, FunctionRewardManager, SequentialFunctionRewardManager
 from .gpt41_reward_manager import GPT41RewardManager
 from .rule_based_format_reward_manager import RuleBasedFormatRewardManager
-from .combined_reward_manager import CombinedRewardManager
+from .combined_reward_manager_version_2 import CombinedRewardManager
 
 
 __all__ = ["BatchFunctionRewardManager", "FunctionRewardManager", "RewardConfig", "SequentialFunctionRewardManager", "GPT41RewardManager", "RuleBasedFormatRewardManager", "CombinedRewardManager"]

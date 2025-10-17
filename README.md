@@ -33,6 +33,12 @@ conda activate yx_grpo_rl_post_edit
 ### 3. 安装依赖
 ```bash
 pip install -r requirements.txt
+
+# 遇到冲突  WARNING: Directory /data2/yixuan/official_grpo_rl_post_edit_module/src/verl already exists, and is not a git clone.
+# WARNING: The plan is to install the git repository https://github.com/hiyouga/EasyR1.git
+# What to do?  (i)gnore, (w)ipe, (b)ackup
+# enter w
+w
 ```
 
 ## 📦 模型和数据下载

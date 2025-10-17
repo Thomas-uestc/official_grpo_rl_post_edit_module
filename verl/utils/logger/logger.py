@@ -154,14 +154,14 @@ class Tracker:
 
             self.loggers.append(LOGGERS[logger](config))
 
-        self.gen_logger = AggregateGenerationsLogger(loggers)
+        self.gen_logger = AggregateGenerationsLogger(loggers, config)
 
     def log(self, data: dict[str, Any], step: int) -> None:
         for logger in self.loggers:
             logger.log(data=data, step=step)
 
-    def log_generation(self, samples: list[tuple[str, str, str, float]], step: int, context: str = "val") -> None:
-        self.gen_logger.log(samples, step, context)
+    def log_generation(self, samples: list[tuple[str, str, str, float]], step: int, context: str = "val", images: list[dict] = None) -> None:
+        self.gen_logger.log(samples, step, context, images)
 
     def __del__(self):
         for logger in self.loggers:

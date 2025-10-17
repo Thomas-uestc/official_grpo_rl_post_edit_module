@@ -22,6 +22,8 @@ from typing import Optional
 
 @dataclass
 class RewardConfig:
+    def __post_init__(self):
+        self.post_init()
     reward_type: str = "batch"
     reward_function: Optional[str] = None
     reward_function_kwargs: dict = field(default_factory=dict)
@@ -60,8 +62,12 @@ class RewardConfig:
     combined_rule_weight: float = 0.25  # Format dimension weight
     
     # Combination strategy and thresholds
-    combined_strategy: str = "weighted_sum"  # "weighted_sum", "gated", "multiplicative"
+    combined_strategy: str = "weighted_sum"  # "weighted_sum", "gated", "multiplicative", "max_deviation"
     combined_rule_gate_threshold: float = 2.5  # Updated for 0-5 scale
+    
+    # Max deviation strategy weights (for max_deviation strategy)
+    max_deviation_gpt_weight: float = 0.8  # GPT API reward weight
+    max_deviation_rule_weight: float = 0.2  # Rule-based reward weight
     
     # below are auto keys
     reward_function_name: Optional[str] = field(default=None, init=False)
@@ -98,48 +104,62 @@ class RewardConfig:
         # Combined reward validation
         if self.reward_type == "combined":
             # Validate combination strategy
-            valid_strategies = ["weighted_sum", "gated", "multiplicative"]
+            valid_strategies = ["weighted_sum", "gated", "multiplicative", "max_deviation"]
             if self.combined_strategy not in valid_strategies:
                 raise ValueError(f"Invalid combined_strategy '{self.combined_strategy}'. "
                                f"Must be one of: {valid_strategies}")
             
-            # Validate 6-dimension weights
-            dimension_weights = [
-                self.combined_gpt_physical_geometric_weight,
-                self.combined_gpt_environment_context_weight,
-                self.combined_gpt_cultural_social_weight,
-                self.combined_gpt_logical_causal_weight,
-                self.combined_gpt_target_attribution_weight,
-                self.combined_rule_format_weight
-            ]
-            
-            # Check all weights are non-negative
-            for i, weight in enumerate(dimension_weights):
-                if weight < 0:
-                    raise ValueError(f"All dimension weights must be non-negative, got {weight} at index {i}")
-            
-            # Check weights sum is not zero
-            total_weight = sum(dimension_weights)
-            if abs(total_weight) < 1e-6:
-                raise ValueError("Sum of all dimension weights cannot be zero")
-            
-            # Auto-normalize weights if they don't sum to 1.0
-            if abs(total_weight - 1.0) > 1e-6:
-                print(f"[INFO] Normalizing weights from sum {total_weight:.6f} to 1.0")
-                self.combined_gpt_physical_geometric_weight /= total_weight
-                self.combined_gpt_environment_context_weight /= total_weight
-                self.combined_gpt_cultural_social_weight /= total_weight
-                self.combined_gpt_logical_causal_weight /= total_weight
-                self.combined_gpt_target_attribution_weight /= total_weight
-                self.combined_rule_format_weight /= total_weight
-            
-            # Update legacy weights for backward compatibility
-            self.combined_gpt_weight = (self.combined_gpt_physical_geometric_weight + 
-                                      self.combined_gpt_environment_context_weight +
-                                      self.combined_gpt_cultural_social_weight +
-                                      self.combined_gpt_logical_causal_weight +
-                                      self.combined_gpt_target_attribution_weight)
-            self.combined_rule_weight = self.combined_rule_format_weight
+            # Validate max deviation strategy weights first (before 6-dimension validation)
+            if self.combined_strategy == "max_deviation":
+                if not (0.0 <= self.max_deviation_gpt_weight <= 1.0):
+                    raise ValueError(f"Max deviation GPT weight must be in [0, 1], got {self.max_deviation_gpt_weight}")
+                if not (0.0 <= self.max_deviation_rule_weight <= 1.0):
+                    raise ValueError(f"Max deviation rule weight must be in [0, 1], got {self.max_deviation_rule_weight}")
+                
+                # Check weights sum to 1.0
+                total_max_deviation_weight = self.max_deviation_gpt_weight + self.max_deviation_rule_weight
+                if abs(total_max_deviation_weight - 1.0) > 1e-6:
+                    print(f"[INFO] Normalizing max deviation weights from sum {total_max_deviation_weight:.6f} to 1.0")
+                    self.max_deviation_gpt_weight /= total_max_deviation_weight
+                    self.max_deviation_rule_weight /= total_max_deviation_weight
+            else:
+                # Validate 6-dimension weights (only for non-max_deviation strategies)
+                dimension_weights = [
+                    self.combined_gpt_physical_geometric_weight,
+                    self.combined_gpt_environment_context_weight,
+                    self.combined_gpt_cultural_social_weight,
+                    self.combined_gpt_logical_causal_weight,
+                    self.combined_gpt_target_attribution_weight,
+                    self.combined_rule_format_weight
+                ]
+                
+                # Check all weights are non-negative
+                for i, weight in enumerate(dimension_weights):
+                    if weight < 0:
+                        raise ValueError(f"All dimension weights must be non-negative, got {weight} at index {i}")
+                
+                # Check weights sum is not zero
+                total_weight = sum(dimension_weights)
+                if abs(total_weight) < 1e-6:
+                    raise ValueError("Sum of all dimension weights cannot be zero")
+                
+                # Auto-normalize weights if they don't sum to 1.0
+                if abs(total_weight - 1.0) > 1e-6:
+                    print(f"[INFO] Normalizing weights from sum {total_weight:.6f} to 1.0")
+                    self.combined_gpt_physical_geometric_weight /= total_weight
+                    self.combined_gpt_environment_context_weight /= total_weight
+                    self.combined_gpt_cultural_social_weight /= total_weight
+                    self.combined_gpt_logical_causal_weight /= total_weight
+                    self.combined_gpt_target_attribution_weight /= total_weight
+                    self.combined_rule_format_weight /= total_weight
+                
+                # Update legacy weights for backward compatibility
+                self.combined_gpt_weight = (self.combined_gpt_physical_geometric_weight + 
+                                          self.combined_gpt_environment_context_weight +
+                                          self.combined_gpt_cultural_social_weight +
+                                          self.combined_gpt_logical_causal_weight +
+                                          self.combined_gpt_target_attribution_weight)
+                self.combined_rule_weight = self.combined_rule_format_weight
             
             # Validate gate threshold (updated for 0-5 scale)
             if not (0.0 <= self.combined_rule_gate_threshold <= 5.0):
@@ -147,12 +167,16 @@ class RewardConfig:
             
             print(f"[INFO] 6-Dimension Combined reward configuration:")
             print(f"  Strategy: {self.combined_strategy}")
-            print(f"  GPT Physical & Geometric: {self.combined_gpt_physical_geometric_weight:.3f}")
-            print(f"  GPT Environment & Context: {self.combined_gpt_environment_context_weight:.3f}")
-            print(f"  GPT Cultural & Social: {self.combined_gpt_cultural_social_weight:.3f}")
-            print(f"  GPT Logical & Causal: {self.combined_gpt_logical_causal_weight:.3f}")
-            print(f"  GPT Target Attribution: {self.combined_gpt_target_attribution_weight:.3f}")
-            print(f"  Rule Format: {self.combined_rule_format_weight:.3f}")
+            if self.combined_strategy == "max_deviation":
+                print(f"  Max Deviation GPT Weight: {self.max_deviation_gpt_weight:.3f}")
+                print(f"  Max Deviation Rule Weight: {self.max_deviation_rule_weight:.3f}")
+            else:
+                print(f"  GPT Physical & Geometric: {self.combined_gpt_physical_geometric_weight:.3f}")
+                print(f"  GPT Environment & Context: {self.combined_gpt_environment_context_weight:.3f}")
+                print(f"  GPT Cultural & Social: {self.combined_gpt_cultural_social_weight:.3f}")
+                print(f"  GPT Logical & Causal: {self.combined_gpt_logical_causal_weight:.3f}")
+                print(f"  GPT Target Attribution: {self.combined_gpt_target_attribution_weight:.3f}")
+                print(f"  Rule Format: {self.combined_rule_format_weight:.3f}")
             if self.combined_strategy == "gated":
                 print(f"  Gate threshold: {self.combined_rule_gate_threshold:.3f}")
         

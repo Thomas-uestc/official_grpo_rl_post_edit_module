@@ -92,8 +92,12 @@ class CombinedRewardManager(Worker):
         self.rule_weight = self.rule_format_weight
         
         # 奖励策略配置
-        self.combination_strategy = getattr(config, 'combined_strategy', 'weighted_sum')  # 'weighted_sum', 'gated', 'multiplicative'
+        self.combination_strategy = getattr(config, 'combined_strategy', 'weighted_sum')  # 'weighted_sum', 'gated', 'multiplicative', 'max_deviation'
         self.rule_gate_threshold = getattr(config, 'combined_rule_gate_threshold', 2.5)  # 规则奖励门控阈值 (0-5分制的中等分数)
+        
+        # 最大偏差策略的权重配置
+        self.max_deviation_gpt_weight = getattr(config, 'max_deviation_gpt_weight', 0.8)  # GPT API奖励权重
+        self.max_deviation_rule_weight = getattr(config, 'max_deviation_rule_weight', 0.2)  # 规则奖励权重
         
         # 初始化子奖励管理器
         print(f"[DEBUG] CombinedRewardManager: Initializing GPT reward manager...")
@@ -102,13 +106,23 @@ class CombinedRewardManager(Worker):
         print(f"[DEBUG] CombinedRewardManager: Initializing rule-based reward manager...")
         self.rule_reward_manager = RuleBasedFormatRewardManager(config, tokenizer)
         
-        print(f"[DEBUG] CombinedRewardManager: Initialized successfully")
-        print(f"[DEBUG] 6-Dimension Weights:")
-        for dim_key, weight in self.dimension_weights.items():
-            print(f"  {dim_key}: {weight:.3f}")
-        print(f"[DEBUG] Strategy: {self.combination_strategy}")
-        if self.combination_strategy == 'gated':
-            print(f"[DEBUG] Rule gate threshold: {self.rule_gate_threshold}")
+        print(f"[COMBINED_REWARD_INIT] ===== CombinedRewardManager 初始化完成 =====")
+        print(f"[COMBINED_REWARD_INIT] 组合策略: {self.combination_strategy}")
+        
+        if self.combination_strategy == 'max_deviation':
+            print(f"[COMBINED_REWARD_INIT] ===== 最大偏差策略配置 =====")
+            print(f"[COMBINED_REWARD_INIT] GPT权重: {self.max_deviation_gpt_weight:.3f}")
+            print(f"[COMBINED_REWARD_INIT] 规则权重: {self.max_deviation_rule_weight:.3f}")
+            print(f"[COMBINED_REWARD_INIT] 权重总和: {self.max_deviation_gpt_weight + self.max_deviation_rule_weight:.3f}")
+            print(f"[COMBINED_REWARD_INIT] 策略说明: 选择与5分基准偏差最大的GPT维度作为代表分数")
+        else:
+            print(f"[COMBINED_REWARD_INIT] 6维度权重配置:")
+            for dim_key, weight in self.dimension_weights.items():
+                print(f"[COMBINED_REWARD_INIT]   {dim_key}: {weight:.3f}")
+            if self.combination_strategy == 'gated':
+                print(f"[COMBINED_REWARD_INIT] 门控阈值: {self.rule_gate_threshold}")
+        
+        print(f"[COMBINED_REWARD_INIT] ===== 初始化完成 =====")
     
     def combine_rewards_weighted_sum(
         self, 
@@ -176,6 +190,159 @@ class CombinedRewardManager(Worker):
         combined_scores = combined_scores_normalized * 10.0
         
         return combined_scores
+    
+    def combine_rewards_max_deviation(
+        self,
+        gpt_metrics: Dict[str, List[float]],
+        rule_metrics: Dict[str, List[float]]
+    ) -> Tuple[torch.Tensor, Dict[str, List[float]]]:
+        """
+        最大偏差策略：选择与5分基准偏差最大的维度作为GPT代表分数
+        然后与规则奖励按权重组合
+        
+        Args:
+            gpt_metrics: GPT奖励指标，包含5个维度的分数
+            rule_metrics: 规则奖励指标
+            
+        Returns:
+            Tuple of (combined_scores, combined_metrics)
+        """
+        print(f"[MAX_DEVIATION] ===== 开始执行最大偏差组合策略 =====")
+        print(f"[MAX_DEVIATION] 策略权重配置: GPT={self.max_deviation_gpt_weight:.3f}, Rule={self.max_deviation_rule_weight:.3f}")
+        
+        # 提取5个GPT维度分数
+        gpt_dimensions = ["physical_geometric", "environment_context", "cultural_social", "logical_causal", "target_attribution"]
+        dimension_tensors = {}
+        
+        batch_size = None
+        print(f"[MAX_DEVIATION] 提取5个GPT维度分数:")
+        for dim in gpt_dimensions:
+            gpt_key = f"gpt_{dim}"
+            if gpt_key in gpt_metrics:
+                scores = torch.tensor(gpt_metrics[gpt_key], dtype=torch.float32, device='cpu')
+                dimension_tensors[gpt_key] = scores
+                if batch_size is None:
+                    batch_size = len(scores)
+                print(f"[MAX_DEVIATION]   {gpt_key}: 批次大小={len(scores)}, 均值={scores.mean().item():.3f}, 标准差={scores.std().item():.3f}")
+                print(f"[MAX_DEVIATION]   {gpt_key}: 分数范围=[{scores.min().item():.3f}, {scores.max().item():.3f}]")
+            else:
+                print(f"[MAX_DEVIATION]   [WARNING] 缺少{gpt_key}，使用默认分数5.0")
+                if batch_size is None:
+                    # 尝试从其他指标推断batch_size
+                    for key, values in gpt_metrics.items():
+                        if isinstance(values, list) and len(values) > 0:
+                            batch_size = len(values)
+                            break
+                    if batch_size is None:
+                        batch_size = 1
+                dimension_tensors[gpt_key] = torch.full((batch_size,), 5.0, dtype=torch.float32, device='cpu')
+        
+        print(f"[MAX_DEVIATION] 批次大小: {batch_size}")
+        
+        # 计算每个样本的最大偏差维度
+        max_deviation_scores = torch.zeros(batch_size, dtype=torch.float32, device='cpu')
+        max_deviation_dimensions = []
+        
+        print(f"[MAX_DEVIATION] ===== 开始计算每个样本的最大偏差维度 =====")
+        for i in range(batch_size):
+            print(f"[MAX_DEVIATION] --- 样本 {i+1}/{batch_size} ---")
+            
+            # 计算每个维度与5分基准的偏差绝对值
+            deviations = {}
+            print(f"[MAX_DEVIATION]   各维度与5分基准的偏差绝对值:")
+            for dim_key, scores_tensor in dimension_tensors.items():
+                deviation = abs(scores_tensor[i].item() - 5.0)
+                deviations[dim_key] = deviation
+                print(f"[MAX_DEVIATION]     {dim_key}: 分数={scores_tensor[i].item():.3f}, 偏差={deviation:.3f}")
+            
+            # 找到偏差最大的维度
+            max_deviation_dim = max(deviations, key=deviations.get)
+            max_deviation_score = dimension_tensors[max_deviation_dim][i].item()
+            
+            max_deviation_scores[i] = max_deviation_score
+            max_deviation_dimensions.append(max_deviation_dim)
+            
+            print(f"[MAX_DEVIATION]   ✅ 选择维度: {max_deviation_dim}")
+            print(f"[MAX_DEVIATION]   ✅ 最大偏差值: {deviations[max_deviation_dim]:.3f}")
+            print(f"[MAX_DEVIATION]   ✅ 代表分数: {max_deviation_score:.3f}")
+            print()
+        
+        # 提取规则奖励分数
+        print(f"[MAX_DEVIATION] ===== 提取规则奖励分数 =====")
+        if "overall" in rule_metrics:
+            rule_scores = torch.tensor(rule_metrics["overall"], dtype=torch.float32, device='cpu')
+            # 将格式分数从0-5范围缩放到0-10范围
+            rule_scores_scaled = rule_scores * 2.0
+            print(f"[MAX_DEVIATION] 规则分数 (0-5分制): 均值={rule_scores.mean().item():.3f}, 范围=[{rule_scores.min().item():.3f}, {rule_scores.max().item():.3f}]")
+            print(f"[MAX_DEVIATION] 规则分数 (0-10分制): 均值={rule_scores_scaled.mean().item():.3f}, 范围=[{rule_scores_scaled.min().item():.3f}, {rule_scores_scaled.max().item():.3f}]")
+        else:
+            print(f"[MAX_DEVIATION] [WARNING] 缺少规则分数，使用默认分数5.0")
+            rule_scores_scaled = torch.full((batch_size,), 5.0, dtype=torch.float32, device='cpu')
+        
+        # 加权组合：GPT最大偏差分数 + 规则分数
+        print(f"[MAX_DEVIATION] ===== 开始加权组合 =====")
+        print(f"[MAX_DEVIATION] 组合公式: 最终分数 = {self.max_deviation_gpt_weight:.3f} × GPT代表分数 + {self.max_deviation_rule_weight:.3f} × 规则分数")
+        
+        combined_scores = (self.max_deviation_gpt_weight * max_deviation_scores + 
+                          self.max_deviation_rule_weight * rule_scores_scaled)
+        
+        print(f"[MAX_DEVIATION] ===== 组合结果统计 =====")
+        print(f"[MAX_DEVIATION] GPT代表分数统计: 均值={max_deviation_scores.mean().item():.3f}, 范围=[{max_deviation_scores.min().item():.3f}, {max_deviation_scores.max().item():.3f}]")
+        print(f"[MAX_DEVIATION] 规则分数统计: 均值={rule_scores_scaled.mean().item():.3f}, 范围=[{rule_scores_scaled.min().item():.3f}, {rule_scores_scaled.max().item():.3f}]")
+        print(f"[MAX_DEVIATION] 最终组合分数统计: 均值={combined_scores.mean().item():.3f}, 范围=[{combined_scores.min().item():.3f}, {combined_scores.max().item():.3f}]")
+        
+        # 显示每个样本的详细组合过程
+        print(f"[MAX_DEVIATION] ===== 各样本详细组合过程 =====")
+        for i in range(batch_size):
+            gpt_score = max_deviation_scores[i].item()
+            rule_score = rule_scores_scaled[i].item()
+            final_score = combined_scores[i].item()
+            print(f"[MAX_DEVIATION] 样本 {i+1}: GPT代表={gpt_score:.3f} × {self.max_deviation_gpt_weight:.3f} + 规则={rule_score:.3f} × {self.max_deviation_rule_weight:.3f} = {final_score:.3f}")
+        
+        print(f"[MAX_DEVIATION] ===== 最大偏差组合策略执行完成 =====")
+        
+        # 构建详细指标
+        combined_metrics = defaultdict(list)
+        
+        # 主要指标
+        combined_metrics["overall"] = [float(x) for x in combined_scores.tolist()]
+        combined_metrics["combined_score"] = [float(x) for x in combined_scores.tolist()]
+        
+        # 最大偏差相关指标（只包含数值类型）
+        combined_metrics["max_deviation_score"] = [float(x) for x in max_deviation_scores.tolist()]
+        combined_metrics["rule_format_scaled"] = [float(x) for x in rule_scores_scaled.tolist()]
+        
+        # 各维度原始分数
+        for dim_key, scores_tensor in dimension_tensors.items():
+            combined_metrics[dim_key] = [float(x) for x in scores_tensor.tolist()]
+        
+        # 权重信息
+        for i in range(batch_size):
+            combined_metrics["gpt_weight"].append(float(self.max_deviation_gpt_weight))
+            combined_metrics["rule_weight"].append(float(self.max_deviation_rule_weight))
+        
+        # 维度选择统计（转换为数值编码）
+        dimension_encoding = {
+            'gpt_physical_geometric': 1,
+            'gpt_environment_context': 2, 
+            'gpt_cultural_social': 3,
+            'gpt_logical_causal': 4,
+            'gpt_target_attribution': 5
+        }
+        dimension_encoded = [float(dimension_encoding.get(dim, 0)) for dim in max_deviation_dimensions]
+        combined_metrics["max_deviation_dimension_encoded"] = dimension_encoded
+        
+        print(f"[MAX_DEVIATION] ===== 维度选择统计 =====")
+        print(f"[MAX_DEVIATION] 维度编码映射:")
+        for dim_name, code in dimension_encoding.items():
+            print(f"[MAX_DEVIATION]   {dim_name} = {code}")
+        print(f"[MAX_DEVIATION] 各样本选择的维度编码: {dimension_encoded}")
+        print(f"[MAX_DEVIATION] 维度选择分布:")
+        for dim_name, code in dimension_encoding.items():
+            count = dimension_encoded.count(code)
+            print(f"[MAX_DEVIATION]   {dim_name}: {count}次")
+        
+        return combined_scores, dict(combined_metrics)
     
     def combine_rewards_six_dimensions(
         self,
@@ -264,6 +431,10 @@ class CombinedRewardManager(Worker):
             combined_scores = self.combine_rewards_gated(gpt_scores, rule_scores)
         elif self.combination_strategy == 'multiplicative':
             combined_scores = self.combine_rewards_multiplicative(gpt_scores, rule_scores)
+        elif self.combination_strategy == 'max_deviation':
+            # 最大偏差策略需要直接使用详细指标，跳过这里的处理
+            combined_scores, combined_metrics = self.combine_rewards_max_deviation(gpt_metrics, rule_metrics)
+            return combined_scores, combined_metrics
         else:
             print(f"[WARNING] Unknown combination strategy '{self.combination_strategy}', using weighted_sum")
             combined_scores = self.combine_rewards_weighted_sum(gpt_scores, rule_scores)
@@ -272,6 +443,7 @@ class CombinedRewardManager(Worker):
         combined_metrics = defaultdict(list)
         
         # 添加主要指标（确保是数值类型）
+        combined_metrics["overall"] = [float(x) for x in combined_scores.tolist()]
         combined_metrics["combined_score"] = [float(x) for x in combined_scores.tolist()]
         
         # 添加子系统指标（带前缀，确保数值类型）
@@ -293,6 +465,8 @@ class CombinedRewardManager(Worker):
         
         # 添加组合统计信息（只添加数值类型的指标）
         batch_size = len(combined_scores)
+        combined_metrics["gpt_weight"] = [float(self.gpt_weight)] * batch_size
+        combined_metrics["rule_weight"] = [float(self.rule_weight)] * batch_size
         # 不添加字符串类型的combination_strategy，避免np.mean()错误
         
         # 如果是门控策略，添加门控统计（确保都是数值类型）
@@ -366,21 +540,59 @@ class CombinedRewardManager(Worker):
                     if isinstance(rule_metrics[key], list):
                         rule_metrics[key] = rule_metrics[key][:min_batch_size]
             
-            # 组合奖励 - 使用新的6维度组合方法
-            print(f"[DEBUG] Combining rewards using 6-dimension approach...")
-            combined_scores, dimension_tensors = self.combine_rewards_six_dimensions(
-                gpt_metrics, rule_metrics
-            )
-            
-            # 构建组合指标
-            combined_metrics = defaultdict(list)
-            
-            # 添加主要指标
-            combined_metrics["combined_score"] = [float(x) for x in combined_scores.tolist()]
-            
-            # 添加各维度分数
-            for dim_key, scores_tensor in dimension_tensors.items():
-                combined_metrics[dim_key] = [float(x) for x in scores_tensor.tolist()]
+            # 组合奖励 - 根据策略选择组合方法
+            if self.combination_strategy == 'max_deviation':
+                print(f"[COMBINED_REWARD] ===== 使用最大偏差策略组合奖励 =====")
+                print(f"[COMBINED_REWARD] 策略: {self.combination_strategy}")
+                print(f"[COMBINED_REWARD] GPT权重: {self.max_deviation_gpt_weight:.3f}")
+                print(f"[COMBINED_REWARD] 规则权重: {self.max_deviation_rule_weight:.3f}")
+                combined_scores, combined_metrics = self.combine_rewards_max_deviation(
+                    gpt_metrics, rule_metrics
+                )
+                
+                # 为最大偏差策略添加原始指标
+                for key, values in gpt_metrics.items():
+                    if isinstance(values, list) and len(values) > 0:
+                        if isinstance(values[0], (int, float, np.integer, np.floating)):
+                            combined_metrics[f"original_gpt_{key}"] = [float(x) for x in values]
+                
+                for key, values in rule_metrics.items():
+                    if isinstance(values, list) and len(values) > 0:
+                        if isinstance(values[0], (int, float, np.integer, np.floating)):
+                            combined_metrics[f"original_rule_{key}"] = [float(x) for x in values]
+                            
+            else:
+                print(f"[DEBUG] Combining rewards using 6-dimension approach...")
+                combined_scores, dimension_tensors = self.combine_rewards_six_dimensions(
+                    gpt_metrics, rule_metrics
+                )
+                
+                # 构建组合指标
+                combined_metrics = defaultdict(list)
+                
+                # 添加主要指标
+                combined_metrics["overall"] = [float(x) for x in combined_scores.tolist()]
+                combined_metrics["combined_score"] = [float(x) for x in combined_scores.tolist()]
+                
+                # 添加各维度分数
+                for dim_key, scores_tensor in dimension_tensors.items():
+                    combined_metrics[dim_key] = [float(x) for x in scores_tensor.tolist()]
+                
+                # 添加原始GPT和规则指标（带前缀）
+                for key, values in gpt_metrics.items():
+                    if isinstance(values, list) and len(values) > 0:
+                        if isinstance(values[0], (int, float, np.integer, np.floating)):
+                            combined_metrics[f"original_gpt_{key}"] = [float(x) for x in values]
+                
+                for key, values in rule_metrics.items():
+                    if isinstance(values, list) and len(values) > 0:
+                        if isinstance(values[0], (int, float, np.integer, np.floating)):
+                            combined_metrics[f"original_rule_{key}"] = [float(x) for x in values]
+                
+                # 添加权重信息
+                batch_size = len(combined_scores)
+                for dim_key, weight in self.dimension_weights.items():
+                    combined_metrics[f"weight_{dim_key}"] = [float(weight)] * batch_size
             
             print(f"[DEBUG] CombinedRewardManager: Reward computation completed successfully")
             print(f"[DEBUG] Final combined scores - mean: {combined_scores.mean().item():.3f}, "
@@ -409,6 +621,7 @@ class CombinedRewardManager(Worker):
             print(f"[DEBUG] Using fallback batch_size: {batch_size}")
             fallback_scores = torch.zeros(batch_size, dtype=torch.float32, device='cpu')
             fallback_metrics = {
+                "overall": [0.0] * batch_size,
                 "combined_score": [0.0] * batch_size,
                 "error": [str(e)] * batch_size
             }
