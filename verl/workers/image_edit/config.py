@@ -60,8 +60,8 @@ class ImageEditConfig:
     enable_gradient_checkpointing: bool = False
     
     # Image processing
-    image_size: int = 1024
-    max_pixels: int = 1024 * 1024
+    image_size: int = 2048
+    max_pixels: int = 2048 * 2048
     min_pixels: int = 64 * 64
     
     # API configuration for GPT-4.1 reward

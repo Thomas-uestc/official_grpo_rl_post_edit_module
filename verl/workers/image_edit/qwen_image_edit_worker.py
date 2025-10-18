@@ -215,8 +215,43 @@ class QwenImageEditWorker(Worker):
         self.print_rank0(f"Model wrapped with FSDP using {self.config.fsdp_sharding_strategy} strategy")
         return fsdp_model
         
-    def preprocess_image(self, image: Image.Image) -> Image.Image:
+    def preprocess_image(self, image) -> Image.Image:
         """Preprocess image for the pipeline"""
+        # 🔍 DEBUG: 简洁的preprocess_image输入检查
+        self.print_rank0("=" * 60)
+        self.print_rank0("🔍 DEBUG: preprocess_image 输入检查")
+        self.print_rank0("=" * 60)
+        self.print_rank0(f"[DEBUG] preprocess_image input type: {type(image)}")
+        if hasattr(image, '__len__'):
+            self.print_rank0(f"[DEBUG] preprocess_image input length: {len(image)}")
+        if hasattr(image, 'size'):
+            self.print_rank0(f"[DEBUG] preprocess_image input size: {image.size}")
+        
+        # 安全显示图像类型
+        img_type = type(image)
+        if img_type.__name__ == 'Image':
+            self.print_rank0(f"[DEBUG] preprocess_image input: PIL.Image ({image.mode}, {image.size})")
+        elif img_type.__name__ == 'list':
+            self.print_rank0(f"[DEBUG] preprocess_image input: LIST (nested!) length: {len(image)}")
+            if len(image) > 0:
+                nested_type = type(image[0])
+                self.print_rank0(f"[DEBUG] nested image type: {nested_type}")
+        else:
+            self.print_rank0(f"[DEBUG] preprocess_image input: {img_type.__name__} (not PIL.Image!)")
+        self.print_rank0("=" * 60)
+        
+        # Handle potential nested structure - extract actual PIL.Image from list
+        if isinstance(image, list):
+            if len(image) > 0:
+                image = image[0]
+                self.print_rank0(f"[DEBUG] Extracted image from list: {type(image)}")
+            else:
+                raise ValueError("Empty image list in preprocess_image")
+        
+        # Ensure we have a PIL.Image object
+        if not isinstance(image, Image.Image):
+            raise TypeError(f"Expected PIL.Image, got {type(image)} in preprocess_image")
+        
         # Resize image to target size
         if image.size != (self.config.image_size, self.config.image_size):
             image = image.resize((self.config.image_size, self.config.image_size), Image.Resampling.LANCZOS)
@@ -229,10 +264,55 @@ class QwenImageEditWorker(Worker):
             image = image.convert("RGB")
         return image
     
-    def _process_single_image(self, image: Image.Image, instruction: str) -> Image.Image:
+    def _process_single_image(self, image, instruction: str) -> Image.Image:
          """Process a single image with edit instruction"""
          try:
              self.print_rank0(f"[DEBUG] _process_single_image() called with instruction: {instruction[:50]}...")
+             
+             # 🔍 DEBUG: 简洁的输入参数检查
+             self.print_rank0("=" * 60)
+             self.print_rank0("🔍 DEBUG: _process_single_image 输入参数检查")
+             self.print_rank0("=" * 60)
+             self.print_rank0(f"[DEBUG] Input image type: {type(image)}")
+             if hasattr(image, '__len__'):
+                 self.print_rank0(f"[DEBUG] Input image length: {len(image)}")
+             if hasattr(image, 'size'):
+                 self.print_rank0(f"[DEBUG] Input image size: {image.size}")
+             
+             # 安全显示图像类型
+             img_type = type(image)
+             if img_type.__name__ == 'Image':
+                 self.print_rank0(f"[DEBUG] Input image: PIL.Image ({image.mode}, {image.size})")
+             elif img_type.__name__ == 'list':
+                 self.print_rank0(f"[DEBUG] Input image: LIST (nested!) length: {len(image)}")
+                 if len(image) > 0:
+                     nested_type = type(image[0])
+                     self.print_rank0(f"[DEBUG] nested image type: {nested_type}")
+             else:
+                 self.print_rank0(f"[DEBUG] Input image: {img_type.__name__} (not PIL.Image!)")
+             
+             self.print_rank0(f"[DEBUG] Input instruction type: {type(instruction)}")
+             inst_str = str(instruction)
+             self.print_rank0(f"[DEBUG] Input instruction: {inst_str[:50]}{'...' if len(inst_str) > 50 else ''}")
+             self.print_rank0("=" * 60)
+             
+             # Handle potential nested structure - extract actual PIL.Image from list
+             if isinstance(image, list):
+                 if len(image) > 0:
+                     self.print_rank0(f"[DEBUG] Extracting image from list: {type(image[0])}")
+                     image = image[0]
+                     self.print_rank0(f"[DEBUG] Extracted image type: {type(image)}")
+                     self.print_rank0(f"[DEBUG] Extracted image value: {repr(image)}")
+                 else:
+                     raise ValueError("Empty image list in _process_single_image")
+             
+             # Ensure we have a PIL.Image object
+             if not isinstance(image, Image.Image):
+                 self.print_rank0(f"[ERROR] Expected PIL.Image, got {type(image)}")
+                 raise TypeError(f"Expected PIL.Image, got {type(image)} in _process_single_image")
+             
+             self.print_rank0(f"[DEBUG] Final image type: {type(image)}")
+             self.print_rank0(f"[DEBUG] Final image size: {image.size}")
              
              # Preprocess image
              self.print_rank0("[DEBUG] Preprocessing image...")
@@ -349,6 +429,32 @@ class QwenImageEditWorker(Worker):
             edit_instructions = data.non_tensor_batch["re_edit_instructions"]
             self.print_rank0(f"[DEBUG] Extracted {len(images)} images and {len(edit_instructions)} instructions")
             
+            # 🔍 DEBUG: 简洁的数据格式检查
+            self.print_rank0("=" * 60)
+            self.print_rank0("🔍 DEBUG: 数据提取后的格式检查")
+            self.print_rank0("=" * 60)
+            self.print_rank0(f"[DEBUG] images type: {type(images)}, length: {len(images)}")
+            if len(images) > 0:
+                img_type = type(images[0])
+                self.print_rank0(f"[DEBUG] first image type: {img_type}")
+                if hasattr(images[0], '__len__'):
+                    self.print_rank0(f"[DEBUG] first image length: {len(images[0])}")
+                if hasattr(images[0], 'size'):
+                    self.print_rank0(f"[DEBUG] first image size: {images[0].size}")
+                # 安全显示：只显示类型和关键属性，不显示完整内容
+                if img_type.__name__ == 'Image':
+                    self.print_rank0(f"[DEBUG] first image: PIL.Image ({images[0].mode}, {images[0].size})")
+                else:
+                    self.print_rank0(f"[DEBUG] first image: {img_type.__name__} (not PIL.Image!)")
+            
+            self.print_rank0(f"[DEBUG] edit_instructions type: {type(edit_instructions)}, length: {len(edit_instructions)}")
+            if len(edit_instructions) > 0:
+                self.print_rank0(f"[DEBUG] first instruction type: {type(edit_instructions[0])}")
+                # 只显示指令的前50个字符
+                inst_str = str(edit_instructions[0])
+                self.print_rank0(f"[DEBUG] first instruction: {inst_str[:50]}{'...' if len(inst_str) > 50 else ''}")
+            self.print_rank0("=" * 60)
+            
             # Validate data
             if len(images) != len(edit_instructions):
                 self.print_rank0(f"[WARNING] Mismatch: {len(images)} images vs {len(edit_instructions)} instructions")
@@ -357,14 +463,97 @@ class QwenImageEditWorker(Worker):
                 edit_instructions = edit_instructions[:min_len]
                 self.print_rank0(f"[WARNING] Truncated to {min_len} samples")
             
-            # Convert numpy arrays to lists if needed
-            self.print_rank0("[DEBUG] Converting numpy arrays to lists...")
+            # Convert numpy arrays to lists if needed, with image format adaptation
+            self.print_rank0("[DEBUG] Converting numpy arrays to lists with image format adaptation...")
+            
+            # 🔍 DEBUG: 转换前的格式检查
+            self.print_rank0("=" * 60)
+            self.print_rank0("🔍 DEBUG: 数据类型转换前的格式检查")
+            self.print_rank0("=" * 60)
+            self.print_rank0(f"[DEBUG] images before conversion: {type(images)}")
+            if len(images) > 0:
+                img_type = type(images[0])
+                self.print_rank0(f"[DEBUG] first image before conversion: {img_type}")
+                if img_type.__name__ == 'Image':
+                    self.print_rank0(f"[DEBUG] first image: PIL.Image ({images[0].mode}, {images[0].size})")
+                else:
+                    self.print_rank0(f"[DEBUG] first image: {img_type.__name__} (not PIL.Image!)")
+            self.print_rank0(f"[DEBUG] edit_instructions before conversion: {type(edit_instructions)}")
+            if len(edit_instructions) > 0:
+                inst_str = str(edit_instructions[0])
+                self.print_rank0(f"[DEBUG] first instruction before conversion: {inst_str[:50]}{'...' if len(inst_str) > 50 else ''}")
+            self.print_rank0("=" * 60)
+            
+            # 🔧 图像格式适配：在转换为list之前，将原始像素数据转换为PIL.Image
             if isinstance(images, np.ndarray):
-                images = images.tolist()
-                self.print_rank0("[DEBUG] Converted images from numpy array to list")
+                self.print_rank0("[DEBUG] Converting images from numpy array to list with format adaptation...")
+                adapted_images = []
+                for i, img in enumerate(images):
+                    if isinstance(img, Image.Image):
+                        # 已经是PIL.Image，直接添加
+                        adapted_images.append(img)
+                    elif isinstance(img, np.ndarray):
+                        # 原始像素数据，需要转换为PIL.Image
+                        self.print_rank0(f"[DEBUG] Converting image {i} from numpy array to PIL.Image...")
+                        try:
+                            # 假设是RGB格式的像素数据
+                            if len(img.shape) == 3 and img.shape[2] == 3:
+                                # RGB格式
+                                pil_img = Image.fromarray(img.astype(np.uint8), 'RGB')
+                                adapted_images.append(pil_img)
+                                self.print_rank0(f"[DEBUG] Successfully converted image {i} to PIL.Image: {pil_img.mode}, {pil_img.size}")
+                            elif len(img.shape) == 2:
+                                # 灰度格式
+                                pil_img = Image.fromarray(img.astype(np.uint8), 'L')
+                                adapted_images.append(pil_img)
+                                self.print_rank0(f"[DEBUG] Successfully converted image {i} to PIL.Image: {pil_img.mode}, {pil_img.size}")
+                            else:
+                                # 其他格式，尝试直接转换
+                                pil_img = Image.fromarray(img.astype(np.uint8))
+                                adapted_images.append(pil_img)
+                                self.print_rank0(f"[DEBUG] Successfully converted image {i} to PIL.Image: {pil_img.mode}, {pil_img.size}")
+                        except Exception as e:
+                            self.print_rank0(f"[ERROR] Failed to convert image {i} from numpy array: {e}")
+                            # 如果转换失败，尝试使用原始图像
+                            adapted_images.append(img)
+                    else:
+                        # 其他类型，直接添加
+                        adapted_images.append(img)
+                
+                images = adapted_images
+                self.print_rank0(f"[DEBUG] Converted {len(images)} images with format adaptation")
+            
             if isinstance(edit_instructions, np.ndarray):
                 edit_instructions = edit_instructions.tolist()
                 self.print_rank0("[DEBUG] Converted edit_instructions from numpy array to list")
+            
+            # 🔍 DEBUG: 转换后的格式检查
+            self.print_rank0("=" * 60)
+            self.print_rank0("🔍 DEBUG: 数据类型转换后的格式检查")
+            self.print_rank0("=" * 60)
+            self.print_rank0(f"[DEBUG] images after conversion: {type(images)}")
+            if len(images) > 0:
+                img_type = type(images[0])
+                self.print_rank0(f"[DEBUG] first image after conversion: {img_type}")
+                if img_type.__name__ == 'Image':
+                    self.print_rank0(f"[DEBUG] first image: PIL.Image ({images[0].mode}, {images[0].size})")
+                elif img_type.__name__ == 'list':
+                    self.print_rank0(f"[DEBUG] first image: LIST (nested!) length: {len(images[0])}")
+                    if len(images[0]) > 0:
+                        nested_type = type(images[0][0])
+                        self.print_rank0(f"[DEBUG] nested image type: {nested_type}")
+                        if nested_type.__name__ == 'Image':
+                            self.print_rank0(f"[DEBUG] nested image: PIL.Image ({images[0][0].mode}, {images[0][0].size})")
+                        else:
+                            self.print_rank0(f"[DEBUG] nested image: {nested_type.__name__} (not PIL.Image!)")
+                else:
+                    self.print_rank0(f"[DEBUG] first image: {img_type.__name__} (not PIL.Image!)")
+            
+            self.print_rank0(f"[DEBUG] edit_instructions after conversion: {type(edit_instructions)}")
+            if len(edit_instructions) > 0:
+                inst_str = str(edit_instructions[0])
+                self.print_rank0(f"[DEBUG] first instruction after conversion: {inst_str[:50]}{'...' if len(inst_str) > 50 else ''}")
+            self.print_rank0("=" * 60)
             
             # Data parallel processing
             world_size = dist.get_world_size()
