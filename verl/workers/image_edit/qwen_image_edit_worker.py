@@ -216,7 +216,7 @@ class QwenImageEditWorker(Worker):
         return fsdp_model
         
     def preprocess_image(self, image) -> Image.Image:
-        """Preprocess image for the pipeline"""
+        """Preprocess image for the pipeline using thumbnail strategy to preserve aspect ratio"""
         # 🔍 DEBUG: 简洁的preprocess_image输入检查
         self.print_rank0("=" * 60)
         self.print_rank0("🔍 DEBUG: preprocess_image 输入检查")
@@ -252,9 +252,21 @@ class QwenImageEditWorker(Worker):
         if not isinstance(image, Image.Image):
             raise TypeError(f"Expected PIL.Image, got {type(image)} in preprocess_image")
         
-        # Resize image to target size
-        if image.size != (self.config.image_size, self.config.image_size):
-            image = image.resize((self.config.image_size, self.config.image_size), Image.Resampling.LANCZOS)
+        # ═══════════════════════════════════════════════════════
+        # 新策略：使用 thumbnail() 保持纵横比（仿照 ImageEditDataset）
+        # Qwen-Image-Edit Pipeline 支持任意纵横比，无需强制正方形
+        # ═══════════════════════════════════════════════════════
+        target_size = self.config.image_size
+        
+        # 使用 thumbnail 缩放（保持纵横比，只缩小不放大）
+        if image.size[0] > target_size or image.size[1] > target_size:
+            self.print_rank0(f"[DEBUG] Resizing image from {image.size} using thumbnail strategy...")
+            image.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
+            self.print_rank0(f"[DEBUG] Image after thumbnail: {image.size} (aspect ratio preserved)")
+        else:
+            self.print_rank0(f"[DEBUG] Image size {image.size} within limits, no resizing needed")
+        
+        self.print_rank0(f"[DEBUG] Final preprocessed image size: {image.size}")
         return image
     
     def postprocess_image(self, image: Image.Image) -> Image.Image:

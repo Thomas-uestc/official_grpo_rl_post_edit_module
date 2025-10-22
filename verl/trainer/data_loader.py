@@ -42,7 +42,7 @@ def create_dataloader(config: DataConfig, tokenizer: PreTrainedTokenizer, proces
             processor=processor,
             batch_size=config.rollout_batch_size,
             max_length=config.max_prompt_length,
-            image_size=2048,
+            image_size=1024,
             num_workers=8,
             shuffle=config.shuffle,
             data_format="parquet",

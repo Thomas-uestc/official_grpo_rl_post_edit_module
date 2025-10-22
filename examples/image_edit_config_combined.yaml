@@ -229,7 +229,7 @@ worker:
     # --- 内存优化配置 ---
     enable_cpu_offload: false           # CPU卸载（独占GPU资源，无需卸载）
     enable_gradient_checkpointing: false # 梯度检查点（推理阶段不需要）
-    image_size: 1024                    # 处理图像尺寸（1024x1024）
+    image_size: 2048                    # 处理图像尺寸（1024x1024）
 
 # ========================================
 # 训练器配置 - 训练流程控制
