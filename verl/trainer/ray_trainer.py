@@ -967,8 +967,8 @@ class RayPPOTrainer:
         print(f"[Trainer] _process_image_editing: batch keys: {list(batch.batch.keys())}")
         print(f"[Trainer] _process_image_editing: batch non_tensor keys: {list(batch.non_tensor_batch.keys())}")
         
-        # Extract re-edit instructions from generated output using InstructionExtractor
-        from ..utils.instruction_extractor import InstructionExtractor
+        # Extract re-edit instructions from generated output using InstructionExtractorEnhanced
+        from ..utils.instruction_extractor_enhanced import InstructionExtractorEnhanced
         
         print(f"[Trainer] _process_image_editing: Extracting responses from batch")
         response_ids = batch.batch["responses"]
@@ -986,9 +986,13 @@ class RayPPOTrainer:
             if i < 3:  # Log first 3 for debugging
                 print(f"[Trainer] _process_image_editing: Response {i+1}: {response_str[:100]}...")
         
-        print(f"[Trainer] _process_image_editing: Extracting re-edit instructions...")
-        # Extract re-edit instructions using our InstructionExtractor
-        extractor = InstructionExtractor()
+        print(f"[Trainer] _process_image_editing: Extracting re-edit instructions (enhanced multi-tag support)...")
+        # Extract re-edit instructions using enhanced extractor with multi-tag support
+        extractor = InstructionExtractorEnhanced(
+            enable_multi_tag=True,           # Enable multi-tag extraction and concatenation
+            concatenation_separator="; ",    # Use semicolon + space as separator
+            fallback_instruction="Improve the image quality and consistency"
+        )
         re_edit_instructions = extractor.extract_batch_instructions(model_outputs)
         
         print(f"[Trainer] Extracted {len(re_edit_instructions)} re-edit instructions")

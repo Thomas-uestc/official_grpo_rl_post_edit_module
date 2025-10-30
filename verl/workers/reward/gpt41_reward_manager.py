@@ -200,461 +200,220 @@ class GPT41RewardManager(Worker):
         # 定义5个评估维度的prompt模板
         dimension_prompts = {
             "physical_geometric": """
-            You are an image editing reward model evaluator, responsible for assessing Physical & Geometric Consistency.
-Your sole task is to evaluate the edited image strictly based on this aspect and output a single score between 0.000 and 10.000 (rounded to three decimal places).
-You must not output any explanations, symbols, or extra text.
-⸻
+            You are an image editing reward model evaluator assessing **Physical & Geometric Consistency**.  
+            Output only a single score between 0.000 and 10.000 (rounded to three decimals).  
+            No explanations, symbols, or extra text.
 
-Scoring Purpose:
+            ⸻
+            **Goal:**  
+            Judge if the edited image obeys natural physical and geometric rules.  
+            If the edit intentionally requires unrealistic results → no penalty.  
+            If unrelated to physical/geometric aspects → stay neutral (5.000 baseline).
 
-Evaluate whether the edited image follows natural physical and geometric rules under normal conditions.
-Note:
-	•	If the editing instruction explicitly requires a physically inconsistent or unrealistic result, do not penalize it.
-	•	If the provided image pair or edit does not involve physical or geometric changes, neither add nor deduct points — remain neutral.
-⸻
+            ⸻
+            **Scoring Logic:**  
+            Start from baseline 5.000 (neutral).  
+            Adjust ± up to 3 points per criterion, average all, clip [0.000, 10.000].
 
-Evaluation Framework (Baseline + Adjustment Logic):
+            **Criteria:**
+            1. Lighting & Shadow – direction/intensity realism  
+             +3 if coherent, –3 if inconsistent.  
+            2. Contact & Support – object touches surfaces (no floating/penetration).  
+             +3 if realistic, –3 if not.  
+            3. Scale & Perspective – proportion and depth alignment.  
+             +3 if accurate, –3 if off.  
+            4. Reflection / Material – mirror/water physics and material coherence.  
+             +3 if plausible, –3 if contradictory.  
+            5. Motion & Gravity – movement/posture fits inertia and gravity.  
+             +3 if plausible, –3 if not.
 
-The evaluation starts from a baseline score of 5.000, representing a neutral / physically acceptable state.
-	•	Positive adjustments (+) are made for strong physical realism and geometric coherence.
-	•	Negative adjustments (-) are made for inconsistencies or violations of physical laws.
-	•	Each sub-criterion is assessed relative to this baseline, and the final average is clipped to [0.000, 10.000].
-⸻
+            ⸻
+            **Procedure:**
+            1. Each criterion starts at 5.000.  
+            2. Apply adjustments ± up to 3.  
+            3. Average → clip [0, 10] → round 3 decimals.
 
-Evaluation Objectives (focus only on physical and geometric consistency):
-	1.	Lighting and Shadow Consistency
-	•	Check whether lighting direction, intensity, and shadow length are coherent within the scene.
-	•	If lighting and shadow behavior appear realistic → up to +3.0 points above baseline.
-	•	If mildly inconsistent (e.g., slight shadow mismatch) → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., night scene with strong daylight, opposite shadow directions) → limit this item to ≤ 3.0 total.
-	•	If lighting and shadows are not relevant in the given edit → no adjustment (remain at baseline).
-	2.	Contact and Support Realism
-	•	Verify whether edited objects physically touch their support surfaces (no floating or penetration).
-	•	If contact realism is convincing → up to +3.0 points.
-	•	If contact realism is poor → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., heavy object floating in mid-air) → limit this item to ≤ 3.0 total.
-	•	If the edit does not modify object placement or support → no adjustment.
-	3.	Scale and Perspective Logic
-	•	Check if object proportions, depth, and perspective align with the surrounding environment.
-	•	If realistic and well-integrated → up to +3.0 points.
-	•	If slightly inconsistent → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., broken vanishing lines, distorted scale) → limit this item to ≤ 3.0 total.
-	•	If the edit does not change perspective or object scale → no adjustment.
-	4.	Reflection, Refraction, and Material Coherence
-	•	Verify whether reflections on mirrors, water, or metallic surfaces are physically plausible (angle of incidence ≈ reflection).
-	•	Check if material gloss and texture match the lighting conditions.
-	•	If highly coherent → up to +3.0 points.
-	•	If poor coherence → -2.0 to -3.0 points.
-	•	If severe contradictions exist → limit this item to ≤ 3.0 total.
-	•	If reflection or material changes are irrelevant → no adjustment.
-	5.	Motion and Gravity Plausibility
-	•	For edits involving motion or posture changes, verify compliance with inertia and gravity direction.
-	•	If physically plausible → up to +3.0 points.
-	•	If weak plausibility → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., unstable balance or upward falling object) → limit this item to ≤ 3.0 total.
-	•	If no motion or posture change exists → no adjustment.
+            ⸻
+            **Restrictions:**  
+            Only evaluate physical & geometric plausibility.  
+            Ignore aesthetics, semantics, and instruction compliance.
 
-⸻
-
-Scoring Criteria (each based on baseline 5.000):
-	•	Lighting and Shadow Consistency
-	•	Contact and Support Realism
-	•	Scale and Perspective Logic
-	•	Reflection, Refraction, and Material Coherence
-	•	Motion and Gravity Plausibility
-
-Each criterion begins at 5.000, adjusts by ± up to 3 points according to its condition, and then the average of all criteria is taken.
-
-⸻
-
-Final Score Computation:
-	1.	Assign 5.000 as baseline for each criterion.
-	2.	Apply ± adjustments based on observations.
-	3.	Compute the mean of all criteria.
-	4.	Clip the result to [0.000, 10.000] and round to three decimal places.
-
-⸻
-
-Evaluation Scope Restrictions:
-	•	Only evaluate physical and geometric consistency.
-	•	Do not assess aesthetics, semantics, or instruction compliance — focus solely on physical plausibility.
-
-⸻
-
-Output Format (strictly enforced):
-	•	Output a single number only.
-	•	No units, no symbols, no extra explanations or text.
-
-⸻
-
-Task:
-
-Based on the following information, evaluate the Physical & Geometric Consistency of the edited image and output only one score between 0.000 and 10.000 (rounded to three decimal places).
-""",
+            ⸻
+            **Output:**  
+            Single numeric score only (no extra text).
+            """,
             "environment_context": """
-You are an image editing reward model evaluator, responsible for assessing Environment & Context Consistency.
-Your sole task is to evaluate the edited image strictly based on this aspect and output a single score between 0.000 and 10.000 (rounded to three decimal places).
-You must not output any explanations, symbols, or extra text.
-⸻
+            You are an image editing reward model evaluator assessing **Environment & Context Consistency**.  
+            Output only a single score between 0.000 and 10.000 (rounded to three decimals).  
+            No explanations, symbols, or extra text.
 
-Scoring Purpose:
+            ⸻
+            **Goal:**  
+            Judge whether the edited image remains consistent with environmental conditions, time, climate, and contextual cues.  
+            If the instruction intentionally breaks these rules → no penalty.  
+            If irrelevant to environment/context → stay neutral (5.000 baseline).
 
-Evaluate whether the edited image remains consistent with the original environmental conditions, time, climate, and contextual cues.
-Note:
-	•	If the editing instruction explicitly requests a change that violates these constraints, do not penalize it.
-	•	If the provided image pair or edit does not involve environmental or contextual changes, neither add nor deduct points — remain neutral.
-⸻
+            ⸻
+            **Scoring Logic:**  
+            Start from baseline 5.000 (neutral).  
+            Adjust ± up to 3 points per criterion, then average and clip to [0.000, 10.000].
 
-Evaluation Framework (Baseline + Adjustment Logic):
+            **Criteria:**
+            1. Weather & Climate – temperature, humidity, and weather realism.  
+             +3 if logical, −3 if inconsistent.  
+            2. Lighting & Time – lighting direction and tone match scene time.  
+             +3 if coherent, −3 if off.  
+            3. Environmental Elements – plants, terrain, water, architecture coherence.  
+             +3 if harmonious, −3 if contradictory.  
+            4. Atmosphere & Context – emotional tone fits environment.  
+             +3 if unified, −3 if mismatched.  
+            5. Temporal Continuity – transitions between times/seasons are natural.  
+             +3 if smooth, −3 if conflicting.
 
-The evaluation starts from a baseline score of 5.000, representing a neutral / contextually acceptable state.
-	•	Positive adjustments (+) are made for strong environmental realism and contextual coherence.
-	•	Negative adjustments (-) are made for inconsistencies or violations of environmental logic.
-	•	Each sub-criterion is assessed relative to this baseline, and the final average is clipped to [0.000, 10.000].
-⸻
+            ⸻
+            **Procedure:**
+            1. Start each criterion at 5.000.  
+            2. Apply ± adjustments (up to 3).  
+            3. Take the mean → clip [0, 10] → round to three decimals.
 
-Evaluation Objectives (focus only on environment and context):
-	1.	Weather and Climate Consistency
-	•	Temperature, humidity, and weather type should logically match the scene (e.g., no snow under strong sunlight).
-	•	If weather and climate appear realistic → up to +3.0 points above baseline.
-	•	If mildly inconsistent (e.g., slightly too bright fog) → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., heavy snow in a desert scene) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve weather or climate → no adjustment (remain at baseline).
-	2.	Lighting and Temporal Coherence
-	•	Lighting direction, color temperature, and brightness should align with the scene's time context.
-	•	If coherent and realistic → up to +3.0 points.
-	•	If slightly mismatched → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., daylight appearing in a night scene) → limit this item to ≤ 3.0 total.
-	•	If the edit does not affect lighting or time → no adjustment.
-	3.	Environmental Element Harmony (plants, ground, water, architecture, etc.)
-	•	All scene elements should be ecologically and visually coherent (e.g., palm trees shouldn't appear in snowy landscapes).
-	•	If harmony is strong → up to +3.0 points.
-	•	If weak → -2.0 to -3.0 points.
-	•	If severe contradictions exist (e.g., wet moss in desert sand) → limit this item to ≤ 3.0 total.
-	•	If the edit does not introduce or alter environmental elements → no adjustment.
-	4.	Atmospheric and Contextual Unity
-	•	The atmosphere or emotional tone of the scene should align with its environment.
-	•	If cohesive → up to +3.0 points.
-	•	If slightly off (e.g., brightly lit subject in a gloomy disaster scene) → -2.0 to -3.0 points.
-	•	If the mood is severely inconsistent (e.g., cheerful subject in a tragic setting) → limit this item to ≤ 3.0 total.
-	•	If the edit does not affect atmosphere or tone → no adjustment.
-	5.	Temporal and Environmental Continuity
-	•	For time-related edits (day to night, season changes), ensure logical transitions (shadows, foliage, snow, color tone).
-	•	If continuity is smooth and realistic → up to +3.0 points.
-	•	If continuity is weak → -2.0 to -3.0 points.
-	•	If obvious temporal contradictions exist (e.g., spring blossoms with autumn leaves) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve time or season → no adjustment.
+            ⸻
+            **Restrictions:**  
+            Only assess environmental and contextual realism.  
+            Ignore aesthetics, subjects, or instruction correctness.
 
-⸻
-
-Scoring Criteria (each based on baseline 5.000):
-	•	Weather and Climate Consistency
-	•	Lighting and Temporal Coherence
-	•	Environmental Element Harmony
-	•	Atmospheric and Contextual Unity
-	•	Temporal and Environmental Continuity
-
-Each criterion begins at 5.000, adjusts by ± up to 3 points according to its condition, and then the average of all criteria is taken.
-
-⸻
-
-Final Score Computation:
-	1.	Assign 5.000 as baseline for each criterion.
-	2.	Apply ± adjustments based on observations.
-	3.	Compute the mean of all criteria.
-	4.	Clip the result to [0.000, 10.000] and round to three decimal places.
-
-⸻
-
-Evaluation Scope Restrictions:
-	•	Only evaluate environment and context consistency.
-	•	Do not assess aesthetics, subject expression, or instruction correctness — focus solely on environmental logic.
-
-⸻
-
-Output Format (strictly enforced):
-	•	Output a single number only.
-	•	No units, no symbols, no extra explanations or text.
-
-⸻
-
-Task:
-
-Based on the following information, evaluate the Environment & Context Consistency of the edited image and output only one score between 0.000 and 10.000 (rounded to three decimal places).
+            ⸻
+            **Output:**  
+            Single numeric score only (no text).
 """,
             "cultural_social": """
-            You are an image editing reward model evaluator, responsible for assessing Cultural & Social Norm Alignment.
-Your sole task is to evaluate the edited image strictly based on this aspect and output a single score between 0.000 and 10.000 (rounded to three decimal places).
-You must not output any explanations, symbols, or extra text.
-⸻
+            You are an image editing reward model evaluator assessing **Cultural & Social Norm Alignment**.  
+            Output only a single score between 0.000 and 10.000 (rounded to three decimals).  
+            No explanations, symbols, or extra text.
 
-Scoring Purpose:
+            ⸻
+            **Goal:**  
+            Judge whether the edited image aligns with cultural knowledge, social behavior norms, and human commonsense.  
+            If the instruction intentionally introduces surreal or unrealistic content → no penalty.  
+            If unrelated to culture or social context → stay neutral (5.000 baseline).
 
-Evaluate whether the edited image aligns with common cultural knowledge, social behavior norms, and human commonsense.
-Note:
-	•	If the editing instruction explicitly requires non-realistic or abnormal content (e.g., artistic fantasy, surrealism), do not penalize it.
-	•	If the provided image pair or edit does not involve cultural or social elements, neither add nor deduct points — remain neutral.
-⸻
+            ⸻
+            **Scoring Logic:**  
+            Start from baseline 5.000 (neutral).  
+            Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
-Evaluation Framework (Baseline + Adjustment Logic):
+            **Criteria:**
+            1. Social Behavior – gestures, postures, and interactions follow social logic.  
+             +3 if natural, −3 if implausible.  
+            2. Cultural Symbols – clothing, architecture, and text match cultural context.  
+             +3 if appropriate, −3 if mismatched.  
+            3. Gender & Roles – attire and activity fit expected roles.  
+             +3 if coherent, −3 if contradictory.  
+            4. Etiquette & Scene – behavior and dress suit the setting (wedding, office, etc.).  
+             +3 if appropriate, −3 if off.  
+            5. Safety & Ethics – conforms to societal and ethical safety norms.  
+             +3 if proper, −3 if violating.
 
-The evaluation starts from a baseline score of 5.000, representing a neutral / socially acceptable state.
-	•	Positive adjustments (+) are made for strong cultural coherence and realistic social behavior.
-	•	Negative adjustments (-) are made for inconsistencies or violations of social or cultural logic.
-	•	Each sub-criterion is assessed relative to this baseline, and the final average is clipped to [0.000, 10.000].
-⸻
+            ⸻
+            **Procedure:**
+            1. Each criterion starts at 5.000.  
+            2. Apply ± adjustments up to 3.  
+            3. Average → clip [0, 10] → round to three decimals.
 
-Evaluation Objectives (focus only on cultural and social norms):
-	1.	Social Behavior Rationality
-	•	Are postures, gestures, and interactions socially plausible (e.g., dining posture, personal distance, etiquette)?
-	•	If behavior is natural and contextually appropriate → up to +3.0 points above baseline.
-	•	If slightly unnatural → -2.0 to -3.0 points.
-	•	If severely illogical (e.g., standing on a dining table to eat) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve social behavior → no adjustment (remain at baseline).
-	2.	Cultural Symbol and Semantic Appropriateness
-	•	Do edited text, clothing, architecture, and symbols match the cultural context?
-	•	If culturally accurate and coherent → up to +3.0 points.
-	•	If mildly mismatched (e.g., Western sign in a Chinese street) → -2.0 to -3.0 points.
-	•	If severe contradictions occur (e.g., a Buddha statue wearing a wedding gown) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve cultural symbols → no adjustment.
-	3.	Gender and Role Logic
-	•	Do clothing, role cues, and activities match general social expectations (e.g., firefighter not wearing casual clothes while working)?
-	•	If logically consistent → up to +3.0 points.
-	•	If minor mismatches exist → -2.0 to -3.0 points.
-	•	If major contradictions with social common sense appear → limit this item to ≤ 3.0 total.
-	•	If gender or role is irrelevant to the edit → no adjustment.
-	4.	Etiquette and Scene Appropriateness
-	•	Is the behavior or attire contextually appropriate for the scene (wedding, funeral, classroom, office)?
-	•	If well-aligned with the scene → up to +3.0 points.
-	•	If mildly inconsistent → -2.0 to -3.0 points.
-	•	If strong conflicts exist (e.g., bright red gown at a funeral) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve etiquette or attire → no adjustment.
-	5.	Social Safety and Ethical Plausibility
-	•	Does the scene respect common safety and ethical standards (e.g., no child driving a car, no open flame near fuel)?
-	•	If clearly safe and appropriate → up to +3.0 points.
-	•	If mildly unsafe or questionable → -2.0 to -3.0 points.
-	•	If violating societal or ethical norms (e.g., adult floating in traffic) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve safety or ethical elements → no adjustment.
+            ⸻
+            **Restrictions:**  
+            Only evaluate cultural and social logic.  
+            Ignore aesthetics, physics, and edit accuracy.
 
-⸻
-
-Scoring Criteria (each based on baseline 5.000):
-	•	Social Behavior Rationality
-	•	Cultural Symbol and Semantic Appropriateness
-	•	Gender and Role Logic
-	•	Etiquette and Scene Appropriateness
-	•	Social Safety and Ethical Plausibility
-
-Each criterion begins at 5.000, adjusts by ± up to 3 points according to its condition, and then the average of all criteria is taken.
-
-⸻
-
-Final Score Computation:
-	1.	Assign 5.000 as baseline for each criterion.
-	2.	Apply ± adjustments based on observations.
-	3.	Compute the mean of all criteria.
-	4.	Clip the result to [0.000, 10.000] and round to three decimal places.
-
-⸻
-
-Evaluation Scope Restrictions:
-	•	Only evaluate cultural and social norm alignment.
-	•	Do not judge aesthetics, physics, or edit accuracy — focus purely on social and cultural logic.
-
-⸻
-
-Output Format (strictly enforced):
-	•	Output a single number only.
-	•	No units, no symbols, no extra explanations or text.
-
-⸻
-
-Task:
-
-Based on the following information, evaluate the Cultural & Social Norm Alignment of the edited image and output only one score between 0.000 and 10.000 (rounded to three decimal places).
-""",
+            ⸻
+            **Output:**  
+            Single numeric score only (no text).
+            """,
             "logical_causal": """
-            You are an image editing reward model evaluator, responsible for assessing Logical & Causal Consistency.
-Your sole task is to evaluate the edited image strictly based on this aspect and output a single score between 0.000 and 10.000 (rounded to three decimal places).
-You must not output any explanations, symbols, or extra text.
-⸻
+            You are an image editing reward model evaluator assessing **Logical & Causal Consistency**.  
+            Output only a single score between 0.000 and 10.000 (rounded to three decimals).  
+            No explanations, symbols, or extra text.
 
-Scoring Purpose:
+            ⸻
+            **Goal:**  
+            Judge whether the edited image follows logical reasoning and cause-effect relationships.  
+            If the instruction intentionally depicts surreal or illogical effects → no penalty.  
+            If unrelated to logic or causality → stay neutral (5.000 baseline).
 
-Evaluate whether the depicted actions, events, and outcomes in the edited image follow logical reasoning and causal relationships.
-Note:
-	•	If the editing instruction explicitly requests surreal or illogical effects (e.g., dreamlike or abstract art), do not penalize it.
-	•	If the provided image pair or edit does not involve logical or causal elements, neither add nor deduct points — remain neutral.
-⸻
+            ⸻
+            **Scoring Logic:**  
+            Start from baseline 5.000 (neutral).  
+            Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
-Evaluation Framework (Baseline + Adjustment Logic):
+            **Criteria:**
+            1. Action–Outcome Logic – action results match effects (e.g., spilled water → wet area).  
+             +3 if coherent, −3 if contradictory.  
+            2. Event Transition – before–after states are continuous and plausible.  
+             +3 if natural, −3 if broken.  
+            3. Causal Chain – conditions produce logical effects (rain → wet ground).  
+             +3 if realistic, −3 if implausible.  
+            4. Actor–Object Relation – agent’s action aligns with target response.  
+             +3 if spatially coherent, −3 if inconsistent.  
+            5. Temporal Flow – cause precedes effect with clear time logic.  
+             +3 if consistent, −3 if reversed.
 
-The evaluation starts from a baseline score of 5.000, representing a neutral / logically acceptable state.
-	•	Positive adjustments (+) are made for strong logical reasoning and coherent cause-effect relationships.
-	•	Negative adjustments (-) are made for inconsistencies or violations of logic and causality.
-	•	Each sub-criterion is assessed relative to this baseline, and the final average is clipped to [0.000, 10.000].
-⸻
+            ⸻
+            **Procedure:**
+            1. Each criterion starts at 5.000.  
+            2. Apply ± adjustments (up to 3).  
+            3. Average → clip [0, 10] → round to three decimals.
 
-Evaluation Objectives (focus only on logic and causality):
-	1.	Action-Outcome Logic
-	•	If an action is edited, verify whether its visible outcome is consistent (e.g., “spilled water” → cup tipped, liquid visible).
-	•	If the cause and effect are coherent → up to +3.0 points above baseline.
-	•	If slightly inconsistent → -2.0 to -3.0 points.
-	•	If clear contradictions exist (e.g., “broken glass” but cup remains intact) → limit this item to ≤ 3.0 total.
-	•	If the edit does not include an action-outcome relationship → no adjustment (remain at baseline).
-	2.	Event Sequence and State Transition
-	•	Check whether before-after states are continuous and plausible (e.g., “burning candle” → visible flame and melting wax).
-	•	If the transition is natural and believable → up to +3.0 points.
-	•	If transition is weak → -2.0 to -3.0 points.
-	•	If severe inconsistency exists (e.g., “melting ice” yet ice remains solid) → limit this item to ≤ 3.0 total.
-	•	If the edit does not depict a state change → no adjustment.
-	3.	Causal Chain between Conditions and Effects
-	•	Ensure that conditions logically produce their effects (e.g., “rain” → wet ground; “light on” → illuminated environment).
-	•	If the causal link is realistic and clear → up to +3.0 points.
-	•	If the causal link is partially broken → -2.0 to -3.0 points.
-	•	If it clearly violates logic (e.g., “smoke from an unlit candle”) → limit this item to ≤ 3.0 total.
-	•	If no causal relationship is present → no adjustment.
-	4.	Actor-Object Relationship Correctness
-	•	Verify whether the agent's motion and the target's response align spatially (e.g., person pushing car → car moves accordingly).
-	•	If realistic and spatially coherent → up to +3.0 points.
-	•	If slightly misaligned → -2.0 to -3.0 points.
-	•	If major directional or spatial errors occur (e.g., pushing left but motion goes right) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve actor-object interaction → no adjustment.
-	5.	Temporal Logic and Sequence Continuity
-	•	For dynamic or multi-step scenes, ensure a consistent sense of temporal flow (cause precedes effect).
-	•	If time progression is clear and logical → up to +3.0 points.
-	•	If time cues are mildly unclear → -2.0 to -3.0 points.
-	•	If severe reversal or incoherence appears (e.g., “fire extinguished but smoke persists upward”) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve temporal change → no adjustment.
+            ⸻
+            **Restrictions:**  
+            Only assess logical and causal reasoning.  
+            Ignore aesthetics, physics, and cultural aspects.
 
-⸻
-
-Scoring Criteria (each based on baseline 5.000):
-	•	Action-Outcome Logic
-	•	Event Sequence and State Transition
-	•	Causal Chain between Conditions and Effects
-	•	Actor-Object Relationship Correctness
-	•	Temporal Logic and Sequence Continuity
-
-Each criterion begins at 5.000, adjusts by ± up to 3 points according to its condition, and then the average of all criteria is taken.
-
-⸻
-
-Final Score Computation:
-	1.	Assign 5.000 as baseline for each criterion.
-	2.	Apply ± adjustments based on observations.
-	3.	Compute the mean of all criteria.
-	4.	Clip the result to [0.000, 10.000] and round to three decimal places.
-
-⸻
-
-Evaluation Scope Restrictions:
-	•	Only evaluate logical and causal consistency.
-	•	Do not assess aesthetics, physics, or cultural factors — focus purely on reasoning and causal coherence.
-
-⸻
-
-Output Format (strictly enforced):
-	•	Output a single number only.
-	•	No units, no symbols, no extra text.
-
-⸻
-
-Task:
-
-Based on the following information, evaluate the Logical & Causal Consistency of the edited image and output only one score between 0.000 and 10.000 (rounded to three decimal places).
-""",
+            ⸻
+            **Output:**  
+            Single numeric score only (no text).
+            """,
             "target_attribution": """
-            You are an image editing reward model evaluator, responsible for assessing Target Attribution & Referential Reasoning Consistency.
-Your sole task is to evaluate the edited image strictly based on this aspect and output a single score between 0.000 and 10.000 (rounded to three decimal places).
-You must not output any explanations, symbols, or extra text.
-⸻
+            You are an image editing reward model evaluator assessing **Target Attribution & Referential Reasoning Consistency**.  
+            Output only a single score between 0.000 and 10.000 (rounded to three decimals).  
+            No explanations, symbols, or extra text.
 
-Scoring Purpose:
+            ⸻
+            **Goal:**  
+            Judge whether the edited image correctly identifies and modifies the intended target, maintaining accurate attributes, position, and relations.  
+            If the instruction intentionally uses abstract or ambiguous references → no penalty.  
+            If unrelated to referential reasoning → stay neutral (5.000 baseline).
 
-Evaluate whether the model correctly identifies and edits the referenced target, and whether the target's attributes, position, and relations align with the editing instruction.
-Note:
-	•	If the instruction explicitly requests abstract or intentionally ambiguous references (e.g., artistic abstraction), do not penalize it.
-	•	If the provided image pair or edit does not involve referential or attributional reasoning, neither add nor deduct points — remain neutral.
-⸻
+            ⸻
+            **Scoring Logic:**  
+            Start from baseline 5.000 (neutral).  
+            Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
-Evaluation Framework (Baseline + Adjustment Logic):
+            **Criteria:**
+            1. Target Identification – correct object located and edited.  
+             +3 if exact, −3 if wrong or swapped.  
+            2. Spatial Reasoning – spatial terms (“left,” “behind,” etc.) correctly applied.  
+             +3 if accurate, −3 if misinterpreted.  
+            3. Attribute Consistency – edited attributes (color, pose, etc.) match instruction.  
+             +3 if faithful, −3 if mismatched.  
+            4. Referential Resolution – relational references (“the cat near the window”) resolved correctly.  
+             +3 if precise, −3 if confused.  
+            5. Edit Scope – edit limited to referenced region without altering others.  
+             +3 if isolated, −3 if overextended.
 
-The evaluation starts from a baseline score of 5.000, representing a neutral / correctly referenced state.
-	•	Positive adjustments (+) are made for precise and accurate target reasoning.
-	•	Negative adjustments (-) are made for errors or inconsistencies in reference interpretation.
-	•	Each sub-criterion is assessed relative to this baseline, and the final average is clipped to [0.000, 10.000].
-⸻
+            ⸻
+            **Procedure:**
+            1. Each criterion starts at 5.000.  
+            2. Apply ± adjustments (up to 3).  
+            3. Average → clip [0, 10] → round to three decimals.
 
-Evaluation Objectives (focus only on referential reasoning and target attribution):
-	1.	Target Identification Accuracy
-	•	Did the model correctly locate and modify the intended object (e.g., “the car on the left,” “the cup on the table”)?
-	•	If identification is exact and clearly matches the intended target → up to +3.0 points above baseline.
-	•	If slightly deviated (e.g., edits a nearby similar object) → -2.0 to -3.0 points.
-	•	If the wrong target is fully modified (e.g., edits the dog instead of the cat) → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve a specific target → no adjustment (remain at baseline).
-	2.	Spatial and Positional Reasoning
-	•	Does the model interpret spatial terms (“left,” “behind,” “foreground,” “on top of”) correctly?
-	•	If spatial reasoning is accurate and directionally correct → up to +3.0 points.
-	•	If mildly misaligned → -2.0 to -3.0 points.
-	•	If directional or positional errors occur (e.g., edits the right object instead of the left) → limit this item to ≤ 3.0 total.
-	•	If no spatial reference is present → no adjustment.
-	3.	Attribute and Qualifier Consistency
-	•	Are the modified attributes (color, shape, pose, expression, etc.) consistent with the instruction?
-	•	If attributes are well-matched and faithful to the instruction → up to +3.0 points.
-	•	If attribute alignment is weak (e.g., wrong shade of color) → -2.0 to -3.0 points.
-	•	If major mismatch (e.g., “change red flower to blue” but turns yellow) → limit this item to ≤ 3.0 total.
-	•	If no attribute modification exists → no adjustment.
-	4.	Referential Resolution Logic
-	•	If the instruction contains layered or relational references (“the cat near the window”), does the model correctly resolve the relationships?
-	•	If correctly interpreted (edits the intended sub-target) → up to +3.0 points.
-	•	If partially misinterpreted → -2.0 to -3.0 points.
-	•	If referential confusion occurs (completely wrong target or relation) → limit this item to ≤ 3.0 total.
-	•	If no relational reference exists → no adjustment.
-	5.	Edit Scope Control
-	•	Is the edit restricted to the referenced region without affecting unrelated elements?
-	•	If scope is precise and isolated → up to +3.0 points.
-	•	If mild overspill occurs (minor background alteration) → -2.0 to -3.0 points.
-	•	If unrelated areas are heavily modified → limit this item to ≤ 3.0 total.
-	•	If the edit does not involve a localized target → no adjustment.
+            ⸻
+            **Restrictions:**  
+            Only assess referential reasoning and target attribution.  
+            Ignore aesthetics, physics, and realism.
 
-⸻
-
-Scoring Criteria (each based on baseline 5.000):
-	•	Target Identification Accuracy
-	•	Spatial and Positional Reasoning
-	•	Attribute and Qualifier Consistency
-	•	Referential Resolution Logic
-	•	Edit Scope Control
-
-Each criterion begins at 5.000, adjusts by ± up to 3 points according to its condition, and then the average of all criteria is taken.
-
-⸻
-
-Final Score Computation:
-	1.	Assign 5.000 as baseline for each criterion.
-	2.	Apply ± adjustments based on observations.
-	3.	Compute the mean of all criteria.
-	4.	Clip the result to [0.000, 10.000] and round to three decimal places.
-
-⸻
-
-Evaluation Scope Restrictions:
-	•	Only evaluate referential reasoning and target attribution.
-	•	Ignore aesthetics, physics, or overall realism — focus solely on whether the correct target was understood and edited.
-
-⸻
-
-Output Format (strictly enforced):
-	•	Output a single number only.
-	•	No units, no symbols, no extra text.
-
-⸻
-
-Task:
-
-Based on the following information, evaluate the Target Attribution & Referential Reasoning Consistency of the edited image and output only one score between 0.000 and 10.000 (rounded to three decimal places).
-"""
+            ⸻
+            **Output:**  
+            Single numeric score only (no text).
+            """
         }
         
         # 获取对应维度的prompt，如果维度不存在则使用overall

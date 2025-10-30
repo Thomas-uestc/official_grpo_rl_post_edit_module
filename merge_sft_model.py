@@ -16,8 +16,8 @@ def merge_sft_model():
     """合并SFT模型权重"""
     # 根据用户实际路径配置
     base_model_path = "/data2/yixuan/.cache/huggingface/hub/Qwen-Qwen2.5-VL-7B-Instruct"
-    adalora_path = "/data2/yixuan/Temporary/Qwen2.5-VL/qwen-vl-finetune/result_cvpr/hyperparameter_search_20250914_124104/hps_13_0915_0037_bs4_lr3e-05_lrcos_ga4_r16-8_t0.2-0.7_full/checkpoint-4900"
-    output_path = "/data2/yixuan/Temporary/EasyR1/models/qwen2.5-vl-7b-sft-merged"
+    adalora_path = "/data2/yixuan/Temporary/Qwen2.5-VL/qwen-vl-finetune/result_cvpr/hps7b_long_cot_v2/hps7b_long_cot_22_1030_0950_bs4_lr1e-04_lrcos_ga4_r64-4_t0.2-0.7_qkv/checkpoint-3600"
+    output_path = "/data2/yixuan/Temporary/EasyR1/models/qwen2.5-vl-7b-sft-merged-v2-long-cot"
     
     print("🚀 开始合并SFT AdaLoRA模型...")
     print(f"📥 基础模型: {base_model_path}")

@@ -58,13 +58,17 @@ class RuleBasedFormatRewardManager(Worker):
         return has_cot and has_re_edit
     
     def check_tag_counts(self, predict_str: str) -> bool:
-        """检查标签数量是否符合要求"""
+        """
+        检查标签数量是否符合要求
+        注意：新版本不再限制具体数量，只要存在至少1个CoT和1个Re_edit即可
+        保留此方法是为了兼容性，实际检查逻辑已简化
+        """
         cot_matches = self.cot_pattern.findall(predict_str)
         re_edit_matches = self.re_edit_pattern.findall(predict_str)
         
-        # CoT: 1-2个，Re_edit: 必须1个
-        cot_count_valid = 1 <= len(cot_matches) <= 2
-        re_edit_count_valid = len(re_edit_matches) == 1
+        # 新规则：只要至少有1个CoT和1个Re_edit即可，不限制上限
+        cot_count_valid = len(cot_matches) >= 1
+        re_edit_count_valid = len(re_edit_matches) >= 1
         
         return cot_count_valid and re_edit_count_valid
     
@@ -158,36 +162,43 @@ class RuleBasedFormatRewardManager(Worker):
     def check_hard_requirements(self, predict_str: str) -> bool:
         """
         检查所有硬性要求，任一不满足直接返回False
+        
+        硬性要求（新版本，已移除标签数量限制）:
+        1. 必须存在<CoT></CoT>和<Re_edit></Re_edit>标签（至少各1个）
+        2. 不能存在标签外的内容（允许换行符）
         """
         # 要求1: 必须存在<CoT></CoT>和<Re_edit></Re_edit>标签
         if not self.has_required_tags(predict_str):
             return False
         
-        # 要求2: CoT数量1-2个，Re_edit数量必须为1个
-        if not self.check_tag_counts(predict_str):
-            return False
-        
-        # 要求3: 不能存在标签外的内容（允许换行符）
+        # 要求2: 不能存在标签外的内容（允许换行符）
         if not self.check_no_external_content(predict_str):
             return False
             
         return True
     
     def calculate_re_edit_length_penalty(self, predict_str: str) -> float:
-        """计算Re_edit长度惩罚"""
-        re_edit_match = self.re_edit_pattern.search(predict_str)
-        if not re_edit_match:
+        """
+        计算Re_edit长度惩罚
+        
+        新版本支持多个<Re_edit>标签:
+        - 计算所有<Re_edit>标签的平均长度
+        - 基于平均长度应用惩罚规则
+        """
+        re_edit_matches = self.re_edit_pattern.findall(predict_str)
+        if not re_edit_matches:
             return 0.0
         
-        content = re_edit_match.group(1).strip()
-        content_length = len(content)
+        # 计算所有Re_edit内容的平均长度
+        total_length = sum(len(content.strip()) for content in re_edit_matches)
+        avg_length = total_length / len(re_edit_matches)
         
-        # 长度惩罚规则 (0-5分制)
-        if content_length <= self.re_edit_max_length_ideal:  # 理想长度
+        # 长度惩罚规则 (0-5分制) - 基于平均长度
+        if avg_length <= self.re_edit_max_length_ideal:  # 理想长度
             return 0.0
-        elif content_length <= self.re_edit_max_length_acceptable:  # 可接受长度
+        elif avg_length <= self.re_edit_max_length_acceptable:  # 可接受长度
             return 0.5
-        elif content_length <= self.re_edit_max_length_tolerable:  # 过长但可容忍
+        elif avg_length <= self.re_edit_max_length_tolerable:  # 过长但可容忍
             return 1.5
         else:  # 严重过长
             return 2.5
@@ -238,9 +249,15 @@ class RuleBasedFormatRewardManager(Worker):
         """
         图像编辑格式奖励计算
         
-        评分规则:
+        评分规则（新版本 - 支持多标签）:
         - 硬性要求不满足: 直接返回0.0
+          1. 必须至少包含1个<CoT>和1个<Re_edit>标签
+          2. 不能有标签外的内容
         - 硬性要求满足: 基础分5.0，然后根据软性要求扣减
+          1. Re_edit平均长度惩罚（基于所有Re_edit标签的平均长度）
+          2. Block独立成行惩罚
+        
+        注意: 不再限制标签数量上限，支持多个CoT和Re_edit标签
         
         Args:
             predict_str: 模型预测输出字符串
@@ -285,9 +302,11 @@ class RuleBasedFormatRewardManager(Worker):
             result["cot_count"] = len(cot_matches)
             result["re_edit_count"] = len(re_edit_matches)
             
-            # 记录Re_edit内容长度
+            # 记录Re_edit内容平均长度（支持多个Re_edit标签）
             if re_edit_matches:
-                result["re_edit_content_length"] = len(re_edit_matches[0].strip())
+                total_length = sum(len(content.strip()) for content in re_edit_matches)
+                avg_length = total_length / len(re_edit_matches)
+                result["re_edit_content_length"] = int(avg_length)  # 记录平均长度（取整）
             
             # 检查硬性要求
             hard_requirements_passed = self.check_hard_requirements(predict_str)
