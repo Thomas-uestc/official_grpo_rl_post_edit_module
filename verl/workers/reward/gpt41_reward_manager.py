@@ -217,15 +217,15 @@ class GPT41RewardManager(Worker):
 
             **Criteria:**
             1. Lighting & Shadow – direction/intensity realism  
-             +3 if coherent, –3 if inconsistent.  
+             +3 if coherent, -3 if inconsistent.  
             2. Contact & Support – object touches surfaces (no floating/penetration).  
-             +3 if realistic, –3 if not.  
+             +3 if realistic, -3 if not.  
             3. Scale & Perspective – proportion and depth alignment.  
-             +3 if accurate, –3 if off.  
+             +3 if accurate, -3 if off.  
             4. Reflection / Material – mirror/water physics and material coherence.  
-             +3 if plausible, –3 if contradictory.  
+             +3 if plausible, -3 if contradictory.  
             5. Motion & Gravity – movement/posture fits inertia and gravity.  
-             +3 if plausible, –3 if not.
+             +3 if plausible, -3 if not.
 
             ⸻
             **Procedure:**
@@ -260,15 +260,15 @@ class GPT41RewardManager(Worker):
 
             **Criteria:**
             1. Weather & Climate – temperature, humidity, and weather realism.  
-             +3 if logical, −3 if inconsistent.  
+             +3 if logical, -3 if inconsistent.  
             2. Lighting & Time – lighting direction and tone match scene time.  
-             +3 if coherent, −3 if off.  
+             +3 if coherent, -3 if off.  
             3. Environmental Elements – plants, terrain, water, architecture coherence.  
-             +3 if harmonious, −3 if contradictory.  
+             +3 if harmonious, -3 if contradictory.  
             4. Atmosphere & Context – emotional tone fits environment.  
-             +3 if unified, −3 if mismatched.  
+             +3 if unified, -3 if mismatched.  
             5. Temporal Continuity – transitions between times/seasons are natural.  
-             +3 if smooth, −3 if conflicting.
+             +3 if smooth, -3 if conflicting.
 
             ⸻
             **Procedure:**
@@ -303,15 +303,15 @@ class GPT41RewardManager(Worker):
 
             **Criteria:**
             1. Social Behavior – gestures, postures, and interactions follow social logic.  
-             +3 if natural, −3 if implausible.  
+             +3 if natural, -3 if implausible.  
             2. Cultural Symbols – clothing, architecture, and text match cultural context.  
-             +3 if appropriate, −3 if mismatched.  
+             +3 if appropriate, -3 if mismatched.  
             3. Gender & Roles – attire and activity fit expected roles.  
-             +3 if coherent, −3 if contradictory.  
+             +3 if coherent, -3 if contradictory.  
             4. Etiquette & Scene – behavior and dress suit the setting (wedding, office, etc.).  
-             +3 if appropriate, −3 if off.  
+             +3 if appropriate, -3 if off.  
             5. Safety & Ethics – conforms to societal and ethical safety norms.  
-             +3 if proper, −3 if violating.
+             +3 if proper, -3 if violating.
 
             ⸻
             **Procedure:**
@@ -346,15 +346,15 @@ class GPT41RewardManager(Worker):
 
             **Criteria:**
             1. Action–Outcome Logic – action results match effects (e.g., spilled water → wet area).  
-             +3 if coherent, −3 if contradictory.  
+             +3 if coherent, -3 if contradictory.  
             2. Event Transition – before–after states are continuous and plausible.  
-             +3 if natural, −3 if broken.  
+             +3 if natural, -3 if broken.  
             3. Causal Chain – conditions produce logical effects (rain → wet ground).  
-             +3 if realistic, −3 if implausible.  
-            4. Actor–Object Relation – agent’s action aligns with target response.  
-             +3 if spatially coherent, −3 if inconsistent.  
+             +3 if realistic, -3 if implausible.  
+            4. Actor–Object Relation – agent's action aligns with target response.  
+             +3 if spatially coherent, -3 if inconsistent.  
             5. Temporal Flow – cause precedes effect with clear time logic.  
-             +3 if consistent, −3 if reversed.
+             +3 if consistent, -3 if reversed.
 
             ⸻
             **Procedure:**
@@ -389,15 +389,15 @@ class GPT41RewardManager(Worker):
 
             **Criteria:**
             1. Target Identification – correct object located and edited.  
-             +3 if exact, −3 if wrong or swapped.  
-            2. Spatial Reasoning – spatial terms (“left,” “behind,” etc.) correctly applied.  
-             +3 if accurate, −3 if misinterpreted.  
+             +3 if exact, -3 if wrong or swapped.  
+            2. Spatial Reasoning – spatial terms ("left," "behind," etc.) correctly applied.  
+             +3 if accurate, -3 if misinterpreted.  
             3. Attribute Consistency – edited attributes (color, pose, etc.) match instruction.  
-             +3 if faithful, −3 if mismatched.  
-            4. Referential Resolution – relational references (“the cat near the window”) resolved correctly.  
-             +3 if precise, −3 if confused.  
+             +3 if faithful, -3 if mismatched.  
+            4. Referential Resolution – relational references ("the cat near the window") resolved correctly.  
+             +3 if precise, -3 if confused.  
             5. Edit Scope – edit limited to referenced region without altering others.  
-             +3 if isolated, −3 if overextended.
+             +3 if isolated, -3 if overextended.
 
             ⸻
             **Procedure:**
