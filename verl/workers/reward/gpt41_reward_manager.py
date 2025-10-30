@@ -208,11 +208,11 @@ class GPT41RewardManager(Worker):
             **Goal:**  
             Judge if the edited image obeys natural physical and geometric rules.  
             If the edit intentionally requires unrealistic results → no penalty.  
-            If unrelated to physical/geometric aspects → stay neutral (5.000 baseline).
+            If unrelated to physical/geometric aspects → stay neutral (2.000 baseline).
 
             ⸻
             **Scoring Logic:**  
-            Start from baseline 5.000 (neutral).  
+            Start from baseline 2.000 (neutral).  
             Adjust ± up to 3 points per criterion, average all, clip [0.000, 10.000].
 
             **Criteria:**
@@ -229,7 +229,7 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Procedure:**
-            1. Each criterion starts at 5.000.  
+            1. Each criterion starts at 2.000.  
             2. Apply adjustments ± up to 3.  
             3. Average → clip [0, 10] → round 3 decimals.
 
@@ -251,11 +251,11 @@ class GPT41RewardManager(Worker):
             **Goal:**  
             Judge whether the edited image remains consistent with environmental conditions, time, climate, and contextual cues.  
             If the instruction intentionally breaks these rules → no penalty.  
-            If irrelevant to environment/context → stay neutral (5.000 baseline).
+            If irrelevant to environment/context → stay neutral (2.000 baseline).
 
             ⸻
             **Scoring Logic:**  
-            Start from baseline 5.000 (neutral).  
+            Start from baseline 2.000 (neutral).  
             Adjust ± up to 3 points per criterion, then average and clip to [0.000, 10.000].
 
             **Criteria:**
@@ -272,7 +272,7 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Procedure:**
-            1. Start each criterion at 5.000.  
+            1. Start each criterion at 2.000.  
             2. Apply ± adjustments (up to 3).  
             3. Take the mean → clip [0, 10] → round to three decimals.
 
@@ -294,11 +294,11 @@ class GPT41RewardManager(Worker):
             **Goal:**  
             Judge whether the edited image aligns with cultural knowledge, social behavior norms, and human commonsense.  
             If the instruction intentionally introduces surreal or unrealistic content → no penalty.  
-            If unrelated to culture or social context → stay neutral (5.000 baseline).
+            If unrelated to culture or social context → stay neutral (2.000 baseline).
 
             ⸻
             **Scoring Logic:**  
-            Start from baseline 5.000 (neutral).  
+            Start from baseline 2.000 (neutral).  
             Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
             **Criteria:**
@@ -315,7 +315,7 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Procedure:**
-            1. Each criterion starts at 5.000.  
+            1. Each criterion starts at 2.000.  
             2. Apply ± adjustments up to 3.  
             3. Average → clip [0, 10] → round to three decimals.
 
@@ -335,13 +335,13 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Goal:**  
-            Judge whether the edited image follows logical reasoning and cause-effect relationships.  
+            Judge whether the edited image follows logical reasoning and cause–effect relationships.  
             If the instruction intentionally depicts surreal or illogical effects → no penalty.  
-            If unrelated to logic or causality → stay neutral (5.000 baseline).
+            If unrelated to logic or causality → stay neutral (2.000 baseline).
 
             ⸻
             **Scoring Logic:**  
-            Start from baseline 5.000 (neutral).  
+            Start from baseline 2.000 (neutral).  
             Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
             **Criteria:**
@@ -358,7 +358,7 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Procedure:**
-            1. Each criterion starts at 5.000.  
+            1. Each criterion starts at 2.000.  
             2. Apply ± adjustments (up to 3).  
             3. Average → clip [0, 10] → round to three decimals.
 
@@ -380,11 +380,11 @@ class GPT41RewardManager(Worker):
             **Goal:**  
             Judge whether the edited image correctly identifies and modifies the intended target, maintaining accurate attributes, position, and relations.  
             If the instruction intentionally uses abstract or ambiguous references → no penalty.  
-            If unrelated to referential reasoning → stay neutral (5.000 baseline).
+            If unrelated to referential reasoning → stay neutral (2.000 baseline).
 
             ⸻
             **Scoring Logic:**  
-            Start from baseline 5.000 (neutral).  
+            Start from baseline 2.000 (neutral).  
             Adjust ± up to 3 points per criterion, average all, clip to [0.000, 10.000].
 
             **Criteria:**
@@ -401,7 +401,7 @@ class GPT41RewardManager(Worker):
 
             ⸻
             **Procedure:**
-            1. Each criterion starts at 5.000.  
+            1. Each criterion starts at 2.000.  
             2. Apply ± adjustments (up to 3).  
             3. Average → clip [0, 10] → round to three decimals.
 
